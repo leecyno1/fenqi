@@ -261,4 +261,72 @@ describe("polymarket normalization", () => {
       vi.unstubAllGlobals();
     }
   });
+
+  it("falls back to a compatibility query variant when the first events query returns 422", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ error: "unsupported order" }), { status: 422 }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify([baseEvent]), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      );
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      const events = await fetchPolymarketEvents({
+        limit: 1,
+        active: true,
+        allowFallback: false,
+      });
+
+      expect(events).toHaveLength(1);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      const firstUrl = String(fetchMock.mock.calls[0]?.[0] ?? "");
+      const secondUrl = String(fetchMock.mock.calls[1]?.[0] ?? "");
+      expect(firstUrl).toContain("order=volume_24hr");
+      expect(secondUrl).toContain("order=volume24hr");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("keeps the first page when a later offset page returns 422", async () => {
+    const pageOne = Array.from({ length: 100 }, (_, index) => ({
+      ...baseEvent,
+      id: `${baseEvent.id}-${index}`,
+      slug: `${baseEvent.slug}-${index}`,
+    }));
+    const fetchMock = vi.fn().mockResolvedValueOnce(
+      new Response(JSON.stringify(pageOne), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    for (let index = 0; index < 6; index += 1) {
+      fetchMock.mockResolvedValueOnce(
+        new Response(JSON.stringify({ error: "offset not supported" }), { status: 422 }),
+      );
+    }
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      const events = await fetchPolymarketEvents({
+        limit: 200,
+        active: true,
+        allowFallback: false,
+      });
+
+      expect(events).toHaveLength(100);
+      expect(fetchMock).toHaveBeenCalledTimes(7);
+      const secondPageUrls = fetchMock.mock.calls.slice(1).map((call) => String(call?.[0] ?? ""));
+      expect(secondPageUrls.every((url) => url.includes("offset=100"))).toBe(true);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 });

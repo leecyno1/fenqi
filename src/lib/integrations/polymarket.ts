@@ -224,6 +224,106 @@ export type NormalizedEventCandidate = {
 
 const POLYMARKET_EVENT_URL = "https://polymarket.com/event";
 const POLYMARKET_CLOB_URL = "https://clob.polymarket.com";
+const POLYMARKET_EVENTS_API_URL = "https://gamma-api.polymarket.com/events";
+
+type FetchEventsVariant = {
+  order?: string;
+  includeClosed: boolean;
+};
+
+const EVENTS_QUERY_VARIANTS: FetchEventsVariant[] = [
+  { order: "volume_24hr", includeClosed: true },
+  { order: "volume24hr", includeClosed: true },
+  { order: "volume_24hr", includeClosed: false },
+  { order: "volume24hr", includeClosed: false },
+  { order: "volume", includeClosed: false },
+  { includeClosed: false },
+];
+
+function createEventsQuery(input: {
+  limit: number;
+  offset: number;
+  active?: boolean;
+  variant: FetchEventsVariant;
+}) {
+  const query = new URLSearchParams();
+  query.set("limit", String(input.limit));
+  query.set("offset", String(input.offset));
+  if (input.variant.includeClosed) {
+    query.set("closed", "false");
+  }
+  if (input.variant.order) {
+    query.set("order", input.variant.order);
+    query.set("ascending", "false");
+  }
+  if (typeof input.active === "boolean") {
+    query.set("active", String(input.active));
+  }
+  return query;
+}
+
+function readEventsPayload(payload: unknown) {
+  if (Array.isArray(payload)) {
+    return payload as PolymarketEvent[];
+  }
+
+  if (typeof payload === "object" && payload !== null) {
+    const record = payload as Record<string, unknown>;
+    if (Array.isArray(record.data)) {
+      return record.data as PolymarketEvent[];
+    }
+    if (Array.isArray(record.events)) {
+      return record.events as PolymarketEvent[];
+    }
+  }
+
+  throw new Error("Failed to fetch Polymarket events: unexpected payload shape");
+}
+
+async function fetchEventsPage(input: { limit: number; offset: number; active?: boolean }) {
+  let last422: { query: string; body: string } | null = null;
+
+  for (const variant of EVENTS_QUERY_VARIANTS) {
+    const query = createEventsQuery({
+      limit: input.limit,
+      offset: input.offset,
+      active: input.active,
+      variant,
+    });
+    const url = `${POLYMARKET_EVENTS_API_URL}?${query.toString()}`;
+    const response = await fetch(url, {
+      headers: {
+        accept: "application/json",
+      },
+      cache: "no-store",
+    });
+
+    if (response.ok) {
+      const payload = (await response.json()) as unknown;
+      return readEventsPayload(payload);
+    }
+
+    const body = (await response.text()).trim();
+    if (response.status === 422) {
+      last422 = { query: query.toString(), body };
+      continue;
+    }
+
+    const error = new Error(
+      `Failed to fetch Polymarket events: ${response.status}${body ? ` (${body.slice(0, 240)})` : ""}`,
+    ) as Error & { status?: number };
+    error.status = response.status;
+    throw error;
+  }
+
+  const error = new Error(
+    `Failed to fetch Polymarket events: 422${
+      last422 ? ` (query=${last422.query}${last422.body ? `; body=${last422.body.slice(0, 240)}` : ""})` : ""
+    }`,
+  ) as Error & { status?: number };
+  error.status = 422;
+  throw error;
+}
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
@@ -632,28 +732,20 @@ export async function fetchPolymarketEvents(options: { limit?: number; active?: 
     const events: PolymarketEvent[] = [];
 
     for (let offset = 0; offset < targetLimit; offset += pageSize) {
-      const query = new URLSearchParams();
-      query.set("limit", String(Math.min(pageSize, targetLimit - offset)));
-      query.set("offset", String(offset));
-      query.set("closed", "false");
-      query.set("order", "volume_24hr");
-      query.set("ascending", "false");
-      if (typeof options.active === "boolean") {
-        query.set("active", String(options.active));
+      let page: PolymarketEvent[];
+      try {
+        page = await fetchEventsPage({
+          limit: Math.min(pageSize, targetLimit - offset),
+          offset,
+          active: options.active,
+        });
+      } catch (error) {
+        const status = typeof error === "object" && error !== null ? (error as { status?: number }).status : undefined;
+        if (offset > 0 && status === 422) {
+          break;
+        }
+        throw error;
       }
-
-      const response = await fetch(`https://gamma-api.polymarket.com/events?${query.toString()}`, {
-        headers: {
-          accept: "application/json",
-        },
-        cache: "no-store",
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to fetch Polymarket events: ${response.status}`);
-      }
-
-      const page = (await response.json()) as PolymarketEvent[];
       events.push(...page);
 
       if (page.length < pageSize) {
