@@ -1,0 +1,35 @@
+export const HOMEPAGE_EXTERNAL_PRICE_MAX_AGE_MINUTES = 30;
+export const HOMEPAGE_EXTERNAL_CATALOG_MAX_AGE_MINUTES = 8 * 60;
+
+export const LOCAL_CURATED_EVENT_SLUGS = new Set([
+  "world-ukraine-ceasefire-before-july-2026",
+  "world-strait-shipping-disruption-q2-2026",
+  "world-china-eu-ev-tariff-settlement-2026",
+  "politics-us-house-budget-june-2026",
+  "politics-us-speaker-still-in-seat-july-2026",
+  "politics-france-cabinet-reshuffle-may-2026",
+  "politics-japan-upper-house-coalition-majority-2026",
+  "fed-rate-cut-before-q3-2026",
+  "finance-us10y-above-5-before-june-2026",
+  "finance-gold-above-3200-before-july-2026",
+  "finance-brent-above-100-before-q3-2026",
+  "tech-openai-device-launch-2026",
+  "tech-apple-siri-overhaul-wwdc-2026",
+  "tech-nvidia-4m-blackwell-q2-2026",
+  "cn-ai-phone-q3-shipment",
+  "cn-ai-glasses-q1-2026-shipment",
+  "crypto-eth-spot-etf-net-inflow-june-2026",
+  "crypto-solana-above-400-before-july-2026",
+  "crypto-us-stablecoin-bill-before-aug-2026",
+  "culture-summer-boxoffice-2026-animation",
+  "culture-singer-2026-launch-lineup",
+  "culture-vshow-2026-couple-confirmed",
+  "culture-ride-the-wind-2026-comeback",
+  "culture-china-summer-boxoffice-35b-2026",
+  "culture-china-film-oscar-nomination-2026",
+  "culture-standup-2026-rookie-win",
+  "culture-weibo-night-2026-actor-track",
+  "culture-streaming-gala-2026-costume-drama",
+  "culture-golden-eagle-2026-realist-drama",
+]);
+

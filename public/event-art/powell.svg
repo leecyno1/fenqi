@@ -1,0 +1,15 @@
+<svg width="960" height="720" viewBox="0 0 960 720" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="960" height="720" fill="#F6F8FC"/>
+  <rect x="0" y="0" width="322" height="720" fill="#C62828"/>
+  <rect x="322" y="0" width="638" height="720" fill="#0B1F4D"/>
+  <circle cx="530" cy="162" r="78" fill="#F6F8FC"/>
+  <path d="M456 258C456 218 488 186 528 186H536C576 186 608 218 608 258V350H456V258Z" fill="#F4B400"/>
+  <rect x="376" y="370" width="312" height="220" rx="24" fill="#F6F8FC"/>
+  <rect x="416" y="410" width="232" height="28" rx="14" fill="#0B1F4D"/>
+  <rect x="416" y="458" width="232" height="28" rx="14" fill="#0B1F4D"/>
+  <rect x="416" y="506" width="170" height="28" rx="14" fill="#0B1F4D"/>
+  <text x="72" y="112" fill="#F6F8FC" font-family="Arial, sans-serif" font-size="42" font-weight="700" letter-spacing="6">FINANCE</text>
+  <text x="662" y="614" fill="#F6F8FC" font-family="Arial, sans-serif" font-size="100" font-weight="700" letter-spacing="2">FED</text>
+  <rect x="604" y="86" width="230" height="72" rx="36" fill="#F4B400"/>
+  <text x="636" y="132" fill="#0B1F4D" font-family="Arial, sans-serif" font-size="32" font-weight="700">RATE PATH</text>
+</svg>

@@ -16,6 +16,7 @@
 # next.js
 /.next/
 /out/
+/public/news-cache/
 
 # production
 /build
@@ -39,3 +40,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# local artifacts
+tmp/
+test-results/

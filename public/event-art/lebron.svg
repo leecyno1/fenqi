@@ -1,0 +1,14 @@
+<svg width="960" height="720" viewBox="0 0 960 720" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="960" height="720" fill="#F6F8FC"/>
+  <rect x="0" y="0" width="480" height="720" fill="#0B1F4D"/>
+  <rect x="480" y="0" width="480" height="720" fill="#C62828"/>
+  <circle cx="496" cy="176" r="82" fill="#F4B400"/>
+  <path d="M442 264C442 232 468 206 500 206H512C544 206 570 232 570 264V340H442V264Z" fill="#F6F8FC"/>
+  <path d="M350 624L438 384H560L638 624H548L514 510H486L446 624H350Z" fill="#F6F8FC"/>
+  <circle cx="324" cy="262" r="68" fill="#F4B400"/>
+  <path d="M286 226L352 242L368 308L318 340L268 308L286 226Z" fill="#C62828"/>
+  <text x="72" y="112" fill="#F6F8FC" font-family="Arial, sans-serif" font-size="42" font-weight="700" letter-spacing="6">SPORTS</text>
+  <text x="614" y="606" fill="#F6F8FC" font-family="Arial, sans-serif" font-size="116" font-weight="700" letter-spacing="2">LBJ</text>
+  <rect x="566" y="84" width="276" height="74" rx="37" fill="#F6F8FC"/>
+  <text x="606" y="132" fill="#C62828" font-family="Arial, sans-serif" font-size="34" font-weight="700">GAME CLOCK</text>
+</svg>

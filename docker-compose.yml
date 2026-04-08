@@ -1,0 +1,15 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: poly-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: poly
+      POSTGRES_USER: poly
+      POSTGRES_PASSWORD: poly
+    volumes:
+      - poly-postgres-data:/var/lib/postgresql/data
+
+volumes:
+  poly-postgres-data:

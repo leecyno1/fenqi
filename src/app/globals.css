@@ -1,26 +1,83 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --font-sans:
+    "PingFang SC", "Hiragino Sans GB", "Segoe UI", "Helvetica Neue",
+    "Microsoft YaHei", sans-serif;
+  --font-display:
+    "DIN Alternate", "Bahnschrift SemiCondensed", "Arial Narrow",
+    "PingFang SC", sans-serif;
+  --font-mono:
+    "SFMono-Regular", "JetBrains Mono", "IBM Plex Mono", "Menlo",
+    "Consolas", monospace;
+  --color-bg: #f6f8fc;
+  --color-paper: #ffffff;
+  --color-paper-soft: rgba(29, 78, 216, 0.08);
+  --color-ink: #0f172a;
+  --color-muted-ink: #334155;
+  --color-accent: #1d4ed8;
+  --color-accent-deep: #0b1f4d;
+  --color-secondary: #c62828;
+  --color-secondary-deep: #8e1b1b;
+  --color-gold: #f4b400;
+  --color-line: rgba(11, 31, 77, 0.16);
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+  --color-background: var(--color-bg);
+  --color-foreground: var(--color-ink);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+.font-display {
+  font-family: var(--font-display), var(--font-sans), sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--color-bg);
+  color: var(--color-ink);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  min-height: 100vh;
+  background: var(--color-bg);
+  color: var(--color-ink);
+  font-family: var(--font-sans), sans-serif;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+::selection {
+  background: rgba(29, 78, 216, 0.22);
+}
+
+[data-kbd] {
+  font-family: var(--font-mono), monospace;
+}
+
+@keyframes ticker-marquee {
+  from {
+    transform: translateX(0);
+  }
+
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+.ticker-track {
+  animation: ticker-marquee 28s linear infinite;
+  width: max-content;
+}
+
+.ticker-track:hover {
+  animation-play-state: paused;
 }

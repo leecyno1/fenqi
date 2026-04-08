@@ -1,0 +1,10 @@
+<svg width="960" height="720" viewBox="0 0 960 720" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="960" height="720" fill="#F6F8FC"/>
+  <rect x="0" y="0" width="416" height="720" fill="#0B1F4D"/>
+  <rect x="416" y="0" width="544" height="720" fill="#C62828"/>
+  <rect x="304" y="186" width="352" height="352" rx="36" fill="#F6F8FC"/>
+  <rect x="380" y="262" width="200" height="200" rx="24" fill="#0B1F4D"/>
+  <path d="M480 120V186M480 538V602M242 362H304M656 362H718M330 212L286 168M630 512L674 556M330 512L286 556M630 212L674 168" stroke="#F4B400" stroke-width="22" stroke-linecap="round"/>
+  <text x="68" y="112" fill="#F6F8FC" font-family="Arial, sans-serif" font-size="42" font-weight="700" letter-spacing="6">TECH</text>
+  <text x="650" y="620" fill="#F6F8FC" font-family="Arial, sans-serif" font-size="108" font-weight="700" letter-spacing="2">AI</text>
+</svg>

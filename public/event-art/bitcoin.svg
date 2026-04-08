@@ -1,0 +1,15 @@
+<svg width="960" height="720" viewBox="0 0 960 720" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="960" height="720" fill="#F6F8FC"/>
+  <rect x="0" y="0" width="408" height="720" fill="#C62828"/>
+  <rect x="408" y="0" width="552" height="720" fill="#0B1F4D"/>
+  <circle cx="480" cy="354" r="172" fill="#F4B400" stroke="#F6F8FC" stroke-width="20"/>
+  <path d="M428 262H510C563 262 598 288 598 336C598 371 579 392 546 402C588 411 614 437 614 484C614 540 573 572 504 572H428V262Z" fill="#F6F8FC"/>
+  <path d="M472 304V530" stroke="#0B1F4D" stroke-width="22"/>
+  <path d="M532 304V530" stroke="#0B1F4D" stroke-width="22"/>
+  <rect x="470" y="306" width="76" height="72" rx="18" fill="#0B1F4D"/>
+  <rect x="470" y="422" width="94" height="92" rx="20" fill="#0B1F4D"/>
+  <text x="76" y="112" fill="#F6F8FC" font-family="Arial, sans-serif" font-size="42" font-weight="700" letter-spacing="6">CRYPTO</text>
+  <text x="590" y="628" fill="#F6F8FC" font-family="Arial, sans-serif" font-size="128" font-weight="700" letter-spacing="4">BTC</text>
+  <rect x="574" y="78" width="260" height="74" rx="37" fill="#F6F8FC"/>
+  <text x="614" y="126" fill="#0B1F4D" font-family="Arial, sans-serif" font-size="34" font-weight="700">PRICE EVENT</text>
+</svg>

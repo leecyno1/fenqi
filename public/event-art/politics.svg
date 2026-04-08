@@ -1,0 +1,11 @@
+<svg width="960" height="720" viewBox="0 0 960 720" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="960" height="720" fill="#F6F8FC"/>
+  <rect x="0" y="0" width="480" height="720" fill="#0B1F4D"/>
+  <rect x="480" y="0" width="480" height="720" fill="#C62828"/>
+  <rect x="258" y="234" width="444" height="302" rx="30" fill="#F6F8FC"/>
+  <rect x="304" y="284" width="118" height="204" rx="18" fill="#0B1F4D"/>
+  <rect x="442" y="244" width="118" height="244" rx="18" fill="#F4B400"/>
+  <rect x="580" y="320" width="76" height="168" rx="18" fill="#C62828"/>
+  <text x="78" y="112" fill="#F6F8FC" font-family="Arial, sans-serif" font-size="42" font-weight="700" letter-spacing="6">POLITICS</text>
+  <text x="620" y="620" fill="#F6F8FC" font-family="Arial, sans-serif" font-size="90" font-weight="700" letter-spacing="3">VOTE</text>
+</svg>

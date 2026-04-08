@@ -1,0 +1,16 @@
+.git
+.github
+.next
+node_modules
+tmp
+test-results
+coverage
+*.log
+.env
+.env.*
+!.env.example
+Dockerfile*
+docker-compose*
+README.md
+UPGRADE.md
+tsconfig.tsbuildinfo
