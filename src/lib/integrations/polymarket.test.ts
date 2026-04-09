@@ -246,6 +246,17 @@ describe("polymarket normalization", () => {
     ]);
   });
 
+  it("handles missing tags without crashing normalization", () => {
+    const payload = {
+      ...baseEvent,
+      tags: undefined as unknown as PolymarketEvent["tags"],
+    };
+
+    expect(() => normalizePolymarketEvent(payload)).not.toThrow();
+    const normalized = normalizePolymarketEvent(payload);
+    expect(normalized.event.tags).toEqual([]);
+  });
+
   it("throws instead of silently using the bundled fallback when fallback is disabled", async () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("fetch failed")));
 

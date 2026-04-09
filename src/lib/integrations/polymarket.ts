@@ -240,6 +240,23 @@ const EVENTS_QUERY_VARIANTS: FetchEventsVariant[] = [
   { includeClosed: false },
 ];
 
+function normalizePolymarketEventRecord(input: unknown): PolymarketEvent | null {
+  if (typeof input !== "object" || input === null) {
+    return null;
+  }
+
+  const record = input as Record<string, unknown>;
+  if (typeof record.id !== "string" || typeof record.slug !== "string") {
+    return null;
+  }
+
+  return {
+    ...(record as PolymarketEvent),
+    markets: Array.isArray(record.markets) ? (record.markets as PolymarketMarket[]) : [],
+    tags: Array.isArray(record.tags) ? (record.tags as PolymarketTag[]) : [],
+  };
+}
+
 function createEventsQuery(input: {
   limit: number;
   offset: number;
@@ -263,17 +280,20 @@ function createEventsQuery(input: {
 }
 
 function readEventsPayload(payload: unknown) {
+  const normalize = (items: unknown[]) =>
+    items.map(normalizePolymarketEventRecord).filter((item): item is PolymarketEvent => item !== null);
+
   if (Array.isArray(payload)) {
-    return payload as PolymarketEvent[];
+    return normalize(payload);
   }
 
   if (typeof payload === "object" && payload !== null) {
     const record = payload as Record<string, unknown>;
     if (Array.isArray(record.data)) {
-      return record.data as PolymarketEvent[];
+      return normalize(record.data);
     }
     if (Array.isArray(record.events)) {
-      return record.events as PolymarketEvent[];
+      return normalize(record.events);
     }
   }
 
@@ -364,7 +384,9 @@ function normalizeOutcomeLabel(value: unknown) {
 }
 
 function getBinaryMarkets(event: PolymarketEvent) {
-  return event.markets.filter((market) => {
+  const eventMarkets = Array.isArray(event.markets) ? event.markets : [];
+
+  return eventMarkets.filter((market) => {
     const outcomes = parseJsonArray(market.outcomes).map(normalizeOutcomeLabel);
     return outcomes.length === 2 && outcomes[0] === "yes" && outcomes[1] === "no";
   });
@@ -681,6 +703,8 @@ export function normalizePolymarketEvent(event: PolymarketEvent): NormalizedEven
     } satisfies NormalizedChildMarketCandidate;
   });
 
+  const eventTags = Array.isArray(event.tags) ? event.tags : [];
+
   return {
     event: {
       externalSource: "polymarket",
@@ -717,7 +741,10 @@ export function normalizePolymarketEvent(event: PolymarketEvent): NormalizedEven
           : []),
       ],
       evidence: buildEvidence(event, binaryMarkets[0]),
-      tags: event.tags.map((tag) => tag.label),
+      tags: eventTags
+        .map((tag) => (typeof tag?.label === "string" ? tag.label : ""))
+        .map((label) => label.trim())
+        .filter(Boolean),
       lastSyncedAt: new Date(),
     },
     childMarkets,
