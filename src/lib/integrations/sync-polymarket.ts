@@ -322,6 +322,7 @@ export async function syncPolymarketEvents(
 
   const eventIds = enrichedBundles.map((bundle) => bundle.event.externalEventId);
   const eventSources = Array.from(new Set(enrichedBundles.map((bundle) => bundle.event.externalSource)));
+  const eventSlugs = Array.from(new Set(enrichedBundles.map((bundle) => bundle.event.slug)));
   const existingEvents = await db
     .select({
       id: marketEvents.id,
@@ -336,8 +337,20 @@ export async function syncPolymarketEvents(
         inArray(marketEvents.externalEventId, eventIds),
       ),
     );
+  const existingEventsBySlug = eventSlugs.length
+    ? await db
+        .select({
+          id: marketEvents.id,
+          slug: marketEvents.slug,
+          externalSource: marketEvents.externalSource,
+          externalEventId: marketEvents.externalEventId,
+        })
+        .from(marketEvents)
+        .where(inArray(marketEvents.slug, eventSlugs))
+    : [];
+  const allExistingEvents = [...existingEvents, ...existingEventsBySlug];
   const existingEventMap = new Map(
-    existingEvents
+    allExistingEvents
       .filter(
         (row): row is { id: string; slug: string; externalSource: string; externalEventId: string } =>
           Boolean(row.id && row.externalSource && row.externalEventId),
@@ -345,7 +358,7 @@ export async function syncPolymarketEvents(
       .map((row) => [`${row.externalSource}:${row.externalEventId}`, row]),
   );
   const existingEventSlugMap = new Map<string, { id: string; slug: string }>();
-  for (const row of existingEvents) {
+  for (const row of allExistingEvents) {
     if (row.id && row.slug) {
       existingEventSlugMap.set(row.slug, { id: row.id, slug: row.slug });
     }
@@ -353,6 +366,9 @@ export async function syncPolymarketEvents(
 
   const childIds = enrichedBundles.flatMap((bundle) =>
     bundle.childMarkets.map((child) => child.externalMarketId),
+  );
+  const childSlugs = Array.from(
+    new Set(enrichedBundles.flatMap((bundle) => bundle.childMarkets.map((child) => child.externalMarketSlug))),
   );
   const childSources = Array.from(
     new Set(enrichedBundles.flatMap((bundle) => bundle.childMarkets.map((child) => child.externalSource))),
@@ -373,8 +389,20 @@ export async function syncPolymarketEvents(
           ),
         )
     : [];
+  const existingMarketsBySlug = childSlugs.length
+    ? await db
+        .select({
+          id: markets.id,
+          slug: markets.slug,
+          externalSource: markets.externalSource,
+          externalMarketId: markets.externalMarketId,
+        })
+        .from(markets)
+        .where(inArray(markets.slug, childSlugs))
+    : [];
+  const allExistingMarkets = [...existingMarkets, ...existingMarketsBySlug];
   const existingMarketMap = new Map(
-    existingMarkets
+    allExistingMarkets
       .filter(
         (row): row is { id: string; slug: string; externalSource: string; externalMarketId: string } =>
           Boolean(row.id && row.externalSource && row.externalMarketId),
@@ -382,7 +410,7 @@ export async function syncPolymarketEvents(
       .map((row) => [`${row.externalSource}:${row.externalMarketId}`, row]),
   );
   const existingMarketSlugMap = new Map<string, { id: string; slug: string }>();
-  for (const row of existingMarkets) {
+  for (const row of allExistingMarkets) {
     if (row.id && row.slug) {
       existingMarketSlugMap.set(row.slug, { id: row.id, slug: row.slug });
     }
