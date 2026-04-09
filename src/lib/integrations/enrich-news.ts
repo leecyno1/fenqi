@@ -421,7 +421,9 @@ function rowToCandidate(row: Awaited<ReturnType<typeof getRowsToEnrich>>[number]
     externalSource:
       row.externalSource === "cn_entertainment"
         ? "cn_entertainment"
-        : "polymarket",
+        : row.externalSource === "news_report"
+          ? "news_report"
+          : "polymarket",
     externalId: row.externalId ?? row.id,
     externalSlug: row.externalSlug ?? row.slug,
     sourceName: row.sourceName ?? "Polymarket",
@@ -507,7 +509,7 @@ async function getRowsToEnrich(limit = 12) {
     .from(markets)
       .where(
         and(
-          inArray(markets.externalSource, ["polymarket", "cn_entertainment"]),
+          inArray(markets.externalSource, ["polymarket", "cn_entertainment", "news_report"]),
           or(
             isNull(markets.newsReferences),
           sql`jsonb_array_length(coalesce(${markets.newsReferences}, '[]'::jsonb)) = 0`,

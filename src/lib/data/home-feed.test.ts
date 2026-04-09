@@ -353,6 +353,193 @@ describe("home feed controls", () => {
     expect(selected.map((item) => item.topicKey)).toEqual(["culture", "world", "finance"]);
   });
 
+  it("keeps stale external events out of the featured rail when fresh events are available", () => {
+    const now = new Date("2026-04-08T12:00:00.000Z");
+    const freshExternal = buildEventListItem(
+      {
+        id: "evt_fresh_external",
+        slug: "fresh-external-event",
+        title: "新鲜外部事件",
+        brief: "最新外部盘口。",
+        category: "current_affairs",
+        sourceName: "Polymarket",
+        sourceUrl: "https://polymarket.com/event/fresh-external-event",
+        childMarkets: [{
+          id: "mkt_fresh_external",
+          slug: "fresh-external-event-primary",
+          question: "新鲜外部事件",
+          answerLabel: "主市场",
+          answerOrder: 1,
+          category: "current_affairs",
+          status: "live",
+          closesAt: new Date("2026-04-20T12:00:00.000Z"),
+          resolvesAt: new Date("2026-04-21T12:00:00.000Z"),
+          liquidity: 120,
+          yesShares: 64,
+          noShares: 56,
+          volumePoints: 28000,
+          activeTraders: 2100,
+          externalYesProbabilityBps: 5300,
+          externalNoProbabilityBps: 4700,
+          priceAnchorMode: "external",
+          externalPriceUpdatedAt: new Date("2026-04-08T11:50:00.000Z"),
+        }],
+      },
+      now,
+    );
+    const staleExternal = buildEventListItem(
+      {
+        id: "evt_stale_external",
+        slug: "stale-external-event",
+        title: "过期外部事件",
+        brief: "盘口已过期，但事件仍可浏览。",
+        category: "finance",
+        sourceName: "Polymarket",
+        sourceUrl: "https://polymarket.com/event/stale-external-event",
+        childMarkets: [{
+          id: "mkt_stale_external",
+          slug: "stale-external-event-primary",
+          question: "过期外部事件",
+          answerLabel: "主市场",
+          answerOrder: 1,
+          category: "finance",
+          status: "live",
+          closesAt: new Date("2026-04-25T12:00:00.000Z"),
+          resolvesAt: new Date("2026-04-26T12:00:00.000Z"),
+          liquidity: 120,
+          yesShares: 71,
+          noShares: 49,
+          volumePoints: 39000,
+          activeTraders: 3000,
+          externalYesProbabilityBps: 6100,
+          externalNoProbabilityBps: 3900,
+          priceAnchorMode: "external",
+          externalPriceUpdatedAt: new Date("2026-04-07T00:10:00.000Z"),
+          externalPriceStale: true,
+        }],
+      },
+      now,
+    );
+    const curated = buildEventListItem(
+      {
+        id: "evt_local_curated",
+        slug: "tech-openai-device-launch-2026",
+        title: "本地策展事件",
+        brief: "本地白名单补位。",
+        category: "technology",
+        childMarkets: [{
+          id: "mkt_local_curated",
+          slug: "tech-openai-device-launch-2026-primary",
+          question: "本地策展事件",
+          answerLabel: "主市场",
+          answerOrder: 1,
+          category: "technology",
+          status: "live",
+          closesAt: new Date("2026-04-30T12:00:00.000Z"),
+          resolvesAt: new Date("2026-05-01T12:00:00.000Z"),
+          liquidity: 110,
+          yesShares: 57,
+          noShares: 53,
+          volumePoints: 12000,
+          activeTraders: 860,
+        }],
+      },
+      now,
+    );
+
+    const sections = buildHomeEventSections([freshExternal, staleExternal, curated], now);
+    const featured = sections.find((section) => section.key === "featured");
+    const finance = sections.find((section) => section.key === "finance");
+
+    expect(featured?.markets.map((market) => market.slug)).toEqual([
+      "fresh-external-event",
+      "tech-openai-device-launch-2026",
+    ]);
+    expect(finance?.markets.map((market) => market.slug)).toContain("stale-external-event");
+  });
+
+  it("fills head cards from stale external events only after fresh candidates are exhausted", () => {
+    const now = new Date("2026-04-08T12:00:00.000Z");
+    const fresh = buildEventListItem(
+      {
+        id: "evt_fresh",
+        slug: "fresh-event",
+        title: "Fresh Event",
+        brief: "Fresh Event",
+        category: "current_affairs",
+        sourceName: "Polymarket",
+        sourceUrl: "https://polymarket.com/event/fresh-event",
+        childMarkets: [{
+          id: "mkt_fresh",
+          slug: "fresh-event",
+          question: "Fresh Event",
+          answerLabel: "主市场",
+          answerOrder: 1,
+          category: "current_affairs",
+          status: "live",
+          closesAt: new Date("2026-04-20T12:00:00.000Z"),
+          resolvesAt: new Date("2026-04-21T12:00:00.000Z"),
+          liquidity: 100,
+          yesShares: 55,
+          noShares: 45,
+          volumePoints: 10000,
+          activeTraders: 800,
+          externalYesProbabilityBps: 5300,
+          externalNoProbabilityBps: 4700,
+          priceAnchorMode: "external",
+          externalPriceUpdatedAt: new Date("2026-04-08T11:55:00.000Z"),
+        }],
+      },
+      now,
+    );
+    const stale = buildEventListItem(
+      {
+        id: "evt_stale",
+        slug: "stale-event",
+        title: "Stale Event",
+        brief: "Stale Event",
+        category: "finance",
+        sourceName: "Polymarket",
+        sourceUrl: "https://polymarket.com/event/stale-event",
+        childMarkets: [{
+          id: "mkt_stale",
+          slug: "stale-event",
+          question: "Stale Event",
+          answerLabel: "主市场",
+          answerOrder: 1,
+          category: "finance",
+          status: "live",
+          closesAt: new Date("2026-04-21T12:00:00.000Z"),
+          resolvesAt: new Date("2026-04-22T12:00:00.000Z"),
+          liquidity: 100,
+          yesShares: 65,
+          noShares: 35,
+          volumePoints: 15000,
+          activeTraders: 1200,
+          externalYesProbabilityBps: 6200,
+          externalNoProbabilityBps: 3800,
+          priceAnchorMode: "external",
+          externalPriceUpdatedAt: new Date("2026-04-06T11:55:00.000Z"),
+          externalPriceStale: true,
+        }],
+      },
+      now,
+    );
+
+    const selected = selectHomeFeaturedMarkets(
+      [{
+        key: "featured",
+        title: "热门事件",
+        description: "test",
+        markets: [stale],
+      }],
+      [fresh, stale],
+      2,
+    );
+
+    expect(selected.map((item) => item.slug)).toEqual(["fresh-event", "stale-event"]);
+  });
+
   it("builds stable quick-jump anchors for visible sections", () => {
     const sections = buildHomeMarketSections(markets, new Date("2026-04-05T00:00:00.000Z"));
 

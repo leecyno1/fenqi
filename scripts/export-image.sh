@@ -6,15 +6,19 @@ cd "$ROOT_DIR"
 
 STAMP="$(date +%Y%m%d-%H%M%S)"
 IMAGE_TAG="${IMAGE_TAG:-fenqi:release-${STAMP}}"
+IMAGE_PLATFORM="${IMAGE_PLATFORM:-linux/amd64}"
 OUTPUT_DIR="${OUTPUT_DIR:-$ROOT_DIR/tmp/images}"
 OUTPUT_TAR="${OUTPUT_TAR:-$OUTPUT_DIR/${IMAGE_TAG//[:\/]/-}.tar}"
 
 mkdir -p "$OUTPUT_DIR"
 
 echo "[1/3] Building image: $IMAGE_TAG"
-docker build \
+echo "      Target platform: $IMAGE_PLATFORM"
+docker buildx build \
+  --platform "$IMAGE_PLATFORM" \
   -f Dockerfile \
   -t "$IMAGE_TAG" \
+  --load \
   --build-arg DATABASE_URL="${DATABASE_URL:-postgres://build:build@127.0.0.1:5432/fenqi}" \
   --build-arg BETTER_AUTH_SECRET="${BETTER_AUTH_SECRET:-build-only-secret-0123456789abcdef}" \
   --build-arg BETTER_AUTH_URL="${BETTER_AUTH_URL:-http://localhost:3000}" \

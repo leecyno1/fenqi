@@ -105,7 +105,7 @@ export type NewsReference = {
   fetchedAt?: string | null;
 };
 
-export type ExternalMarketSource = "polymarket" | "cn_entertainment";
+export type ExternalMarketSource = "polymarket" | "cn_entertainment" | "news_report";
 export type PriceAnchorMode = "external" | "hybrid" | "local";
 
 export type NormalizedMarketEventCandidate = {

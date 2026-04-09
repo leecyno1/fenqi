@@ -67,7 +67,11 @@ export function selectHomeFeaturedMarkets<T extends FeedItem>(
   const selected: T[] = [];
   const selectedIds = new Set<string>();
   const selectedTopics = new Set<MarketTopicKey>();
-  const sources = [featured, fallbackMarkets];
+  const isStaleExternal = (market: T) =>
+    market.contentOrigin === "external_live" && market.freshnessStatus !== "fresh";
+  const preferredFeatured = featured.filter((market) => !isStaleExternal(market));
+  const preferredFallback = fallbackMarkets.filter((market) => !isStaleExternal(market));
+  const sources = [preferredFeatured, preferredFallback, featured, fallbackMarkets];
 
   for (const markets of sources) {
     for (const market of markets) {

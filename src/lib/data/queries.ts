@@ -36,7 +36,7 @@ import {
   type PortfolioView,
 } from "@/lib/data/views";
 import { buildVirtualMarketHistory } from "@/lib/data/virtual-history";
-import { evaluateJobFreshness, listLatestTrackedJobRuns } from "@/lib/jobs";
+import { listLatestTrackedJobRuns } from "@/lib/jobs";
 import {
   createMarketState,
   getMarketProbabilities,
@@ -387,36 +387,13 @@ export async function getEventListItems(): Promise<EventListItem[]> {
 
 function filterEventsForHomepage(
   events: EventListItem[],
-  options: {
-    externalCatalogFresh: boolean;
-    externalPricesFresh: boolean;
-  },
 ) {
-  return events.filter((event) => {
-    if (!event.homepageEligible) {
-      return false;
-    }
-
-    if (event.contentOrigin !== "external_live") {
-      return true;
-    }
-
-    return options.externalCatalogFresh && options.externalPricesFresh;
-  });
+  return events.filter((event) => event.homepageEligible);
 }
 
 export async function getHomeEventSections(): Promise<HomeEventSection[]> {
-  const [events, jobRuns] = await Promise.all([
-    getEventListItems(),
-    listLatestTrackedJobRuns(),
-  ]);
-  const freshness = evaluateJobFreshness(jobRuns);
-  const catalogJob = freshness.jobs.find((job) => job.jobName === "sync-polymarket-catalog");
-  const priceJob = freshness.jobs.find((job) => job.jobName === "sync-polymarket-prices");
-  const homepageEvents = filterEventsForHomepage(events, {
-    externalCatalogFresh: catalogJob?.status === "fresh",
-    externalPricesFresh: priceJob?.status === "fresh",
-  });
+  const events = await getEventListItems();
+  const homepageEvents = filterEventsForHomepage(events);
 
   return buildHomeEventSections(homepageEvents);
 }
@@ -426,12 +403,7 @@ export async function getHomepageGovernanceSummary(now = new Date()) {
     getEventListItems(),
     listLatestTrackedJobRuns(),
   ]);
-  const freshness = evaluateJobFreshness(jobRuns, now);
-  const latestByJob = new Map(freshness.jobs.map((job) => [job.jobName, job]));
-  const homepageEvents = filterEventsForHomepage(events, {
-    externalCatalogFresh: latestByJob.get("sync-polymarket-catalog")?.status === "fresh",
-    externalPricesFresh: latestByJob.get("sync-polymarket-prices")?.status === "fresh",
-  });
+  const homepageEvents = filterEventsForHomepage(events);
   const latestSuccessfulRuns = new Map<string, Date>();
 
   for (const run of jobRuns) {

@@ -314,7 +314,7 @@ describe("event view builders", () => {
     expect(event.closesAt.toISOString()).toBe("2026-04-15T12:00:00.000Z");
   });
 
-  it("marks stale external events as ineligible for homepage exposure", () => {
+  it("retains stale external events for secondary homepage sections while flagging them stale", () => {
     const now = new Date("2026-04-08T12:00:00.000Z");
     const event = buildEventListItem(
       {
@@ -354,7 +354,7 @@ describe("event view builders", () => {
 
     expect(event.contentOrigin).toBe("external_live");
     expect(event.freshnessStatus).toBe("stale");
-    expect(event.homepageEligible).toBe(false);
+    expect(event.homepageEligible).toBe(true);
   });
 
   it("allows curated local events onto the homepage while excluding seed demo events", () => {

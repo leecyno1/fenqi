@@ -18,6 +18,7 @@ import {
 } from "./polymarket";
 import { getCnEntertainmentCandidates } from "./cn-entertainment";
 import { enrichCandidateWithNews } from "./enrich-news";
+import { getReportsGeneratedCandidates } from "./reports-generated";
 
 export type SyncPolymarketOptions = {
   limit?: number;
@@ -285,7 +286,11 @@ async function getEventBundles(options: SyncPolymarketOptions = {}) {
       ? []
       : getCnEntertainmentCandidates().map(wrapStandaloneCandidate);
 
-  return [...polymarketBundles.slice(0, 60), ...localBundles];
+  const reportsBundles = await getReportsGeneratedCandidates()
+    .then((candidates) => candidates.map(wrapStandaloneCandidate))
+    .catch(() => []);
+
+  return [...polymarketBundles.slice(0, 60), ...reportsBundles, ...localBundles];
 }
 
 export async function syncPolymarketEvents(
@@ -320,6 +325,7 @@ export async function syncPolymarketEvents(
   const existingEvents = await db
     .select({
       id: marketEvents.id,
+      slug: marketEvents.slug,
       externalSource: marketEvents.externalSource,
       externalEventId: marketEvents.externalEventId,
     })
@@ -333,11 +339,17 @@ export async function syncPolymarketEvents(
   const existingEventMap = new Map(
     existingEvents
       .filter(
-        (row): row is { id: string; externalSource: string; externalEventId: string } =>
+        (row): row is { id: string; slug: string; externalSource: string; externalEventId: string } =>
           Boolean(row.id && row.externalSource && row.externalEventId),
       )
       .map((row) => [`${row.externalSource}:${row.externalEventId}`, row]),
   );
+  const existingEventSlugMap = new Map<string, { id: string; slug: string }>();
+  for (const row of existingEvents) {
+    if (row.id && row.slug) {
+      existingEventSlugMap.set(row.slug, { id: row.id, slug: row.slug });
+    }
+  }
 
   const childIds = enrichedBundles.flatMap((bundle) =>
     bundle.childMarkets.map((child) => child.externalMarketId),
@@ -349,6 +361,7 @@ export async function syncPolymarketEvents(
     ? await db
         .select({
           id: markets.id,
+          slug: markets.slug,
           externalSource: markets.externalSource,
           externalMarketId: markets.externalMarketId,
         })
@@ -363,11 +376,17 @@ export async function syncPolymarketEvents(
   const existingMarketMap = new Map(
     existingMarkets
       .filter(
-        (row): row is { id: string; externalSource: string; externalMarketId: string } =>
+        (row): row is { id: string; slug: string; externalSource: string; externalMarketId: string } =>
           Boolean(row.id && row.externalSource && row.externalMarketId),
       )
       .map((row) => [`${row.externalSource}:${row.externalMarketId}`, row]),
   );
+  const existingMarketSlugMap = new Map<string, { id: string; slug: string }>();
+  for (const row of existingMarkets) {
+    if (row.id && row.slug) {
+      existingMarketSlugMap.set(row.slug, { id: row.id, slug: row.slug });
+    }
+  }
 
   let inserted = 0;
   let updated = 0;
@@ -375,66 +394,23 @@ export async function syncPolymarketEvents(
   for (const bundle of enrichedBundles) {
     const eventKey = `${bundle.event.externalSource}:${bundle.event.externalEventId}`;
     const existingEvent = existingEventMap.get(eventKey);
-    const eventId = existingEvent?.id ?? randomUUID();
-
-    await db
-      .insert(marketEvents)
-      .values(toEventValues(eventId, bundle.event))
-      .onConflictDoUpdate({
-        target: [marketEvents.externalSource, marketEvents.externalEventId],
-        set: {
-          slug: bundle.event.slug,
-          sourceName: bundle.event.sourceName,
-          sourceUrl: bundle.event.sourceUrl,
-          canonicalSourceUrl: bundle.event.canonicalSourceUrl,
-          externalEventSlug: bundle.event.externalEventSlug,
-          externalImageUrl: bundle.event.externalImageUrl,
-          newsImageUrl: bundle.event.newsImageUrl,
-          newsImageCachedUrl: bundle.event.newsImageCachedUrl,
-          newsImageSource: bundle.event.newsImageSource,
-          newsReferences: bundle.event.newsReferences,
-          heatScore: bundle.event.heatScore,
-          controversyScore: bundle.event.controversyScore,
-          isFeatured: bundle.event.isFeatured,
-          lastSyncedAt: bundle.event.lastSyncedAt,
-          title: bundle.event.title,
-          brief: bundle.event.brief,
-          tone: bundle.event.tone,
-          category: bundle.event.category,
-          resolutionSources: bundle.event.resolutionSources,
-          evidence: bundle.event.evidence,
-          updatedAt: new Date(),
-        },
-      });
+    const existingEventBySlug = existingEventSlugMap.get(bundle.event.slug);
+    const eventId = existingEvent?.id ?? existingEventBySlug?.id ?? randomUUID();
+    const eventValues = toEventValues(eventId, bundle.event);
 
     if (existingEvent) {
-      updated += 1;
-    } else {
-      inserted += 1;
-    }
-
-    for (const child of bundle.childMarkets) {
-      const marketKey = `${child.externalSource}:${child.externalMarketId}`;
-      const existingMarket = existingMarketMap.get(marketKey);
-      const marketId = existingMarket?.id ?? randomUUID();
-
       await db
-        .insert(markets)
-        .values(toMarketValues(marketId, eventId, bundle.event, child))
+        .insert(marketEvents)
+        .values(eventValues)
         .onConflictDoUpdate({
-          target: [markets.externalSource, markets.externalMarketId],
+          target: [marketEvents.externalSource, marketEvents.externalEventId],
           set: {
-            eventId,
-            slug: child.externalMarketSlug,
-            externalId: child.externalMarketId,
-            externalSlug: child.externalMarketSlug,
-            externalMarketSlug: child.externalMarketSlug,
-            answerLabel: child.answerLabel,
-            answerOrder: child.answerOrder,
+            slug: bundle.event.slug,
             sourceName: bundle.event.sourceName,
             sourceUrl: bundle.event.sourceUrl,
             canonicalSourceUrl: bundle.event.canonicalSourceUrl,
-            externalImageUrl: child.externalImageUrl ?? bundle.event.externalImageUrl,
+            externalEventSlug: bundle.event.externalEventSlug,
+            externalImageUrl: bundle.event.externalImageUrl,
             newsImageUrl: bundle.event.newsImageUrl,
             newsImageCachedUrl: bundle.event.newsImageCachedUrl,
             newsImageSource: bundle.event.newsImageSource,
@@ -442,30 +418,100 @@ export async function syncPolymarketEvents(
             heatScore: bundle.event.heatScore,
             controversyScore: bundle.event.controversyScore,
             isFeatured: bundle.event.isFeatured,
-            lastSyncedAt: child.lastSyncedAt,
-            externalYesProbabilityBps: child.externalYesProbabilityBps,
-            externalNoProbabilityBps: child.externalNoProbabilityBps,
-            externalPriceUpdatedAt: child.externalPriceUpdatedAt,
-            externalPriceStale: child.externalPriceStale,
-            priceAnchorMode: child.priceAnchorMode,
-            clobTokenIds: child.clobTokenIds,
-            question: child.question,
-            brief: child.brief,
-            tone: child.tone,
-            category: child.category,
-            status: child.status,
-            liquidity: child.liquidity,
-            yesShares: child.yesShares,
-            noShares: child.noShares,
-            volumePoints: child.volumePoints,
-            activeTraders: child.activeTraders,
-            closesAt: child.closesAt,
-            resolvesAt: child.resolvesAt,
+            lastSyncedAt: bundle.event.lastSyncedAt,
+            title: bundle.event.title,
+            brief: bundle.event.brief,
+            tone: bundle.event.tone,
+            category: bundle.event.category,
             resolutionSources: bundle.event.resolutionSources,
             evidence: bundle.event.evidence,
             updatedAt: new Date(),
           },
         });
+      updated += 1;
+    } else if (existingEventBySlug) {
+      await db
+        .update(marketEvents)
+        .set({
+          ...eventValues,
+          id: undefined,
+          createdAt: undefined,
+        })
+        .where(eq(marketEvents.id, existingEventBySlug.id));
+      updated += 1;
+    } else {
+      await db.insert(marketEvents).values(eventValues);
+      inserted += 1;
+    }
+
+    for (const child of bundle.childMarkets) {
+      const marketKey = `${child.externalSource}:${child.externalMarketId}`;
+      const existingMarket = existingMarketMap.get(marketKey);
+      const existingMarketBySlug = existingMarketSlugMap.get(child.externalMarketSlug);
+      const marketId = existingMarket?.id ?? existingMarketBySlug?.id ?? randomUUID();
+      const marketValues = toMarketValues(marketId, eventId, bundle.event, child);
+
+      if (existingMarket) {
+        await db
+          .insert(markets)
+          .values(marketValues)
+          .onConflictDoUpdate({
+            target: [markets.externalSource, markets.externalMarketId],
+            set: {
+              eventId,
+              slug: child.externalMarketSlug,
+              externalId: child.externalMarketId,
+              externalSlug: child.externalMarketSlug,
+              externalMarketSlug: child.externalMarketSlug,
+              answerLabel: child.answerLabel,
+              answerOrder: child.answerOrder,
+              sourceName: bundle.event.sourceName,
+              sourceUrl: bundle.event.sourceUrl,
+              canonicalSourceUrl: bundle.event.canonicalSourceUrl,
+              externalImageUrl: child.externalImageUrl ?? bundle.event.externalImageUrl,
+              newsImageUrl: bundle.event.newsImageUrl,
+              newsImageCachedUrl: bundle.event.newsImageCachedUrl,
+              newsImageSource: bundle.event.newsImageSource,
+              newsReferences: bundle.event.newsReferences,
+              heatScore: bundle.event.heatScore,
+              controversyScore: bundle.event.controversyScore,
+              isFeatured: bundle.event.isFeatured,
+              lastSyncedAt: child.lastSyncedAt,
+              externalYesProbabilityBps: child.externalYesProbabilityBps,
+              externalNoProbabilityBps: child.externalNoProbabilityBps,
+              externalPriceUpdatedAt: child.externalPriceUpdatedAt,
+              externalPriceStale: child.externalPriceStale,
+              priceAnchorMode: child.priceAnchorMode,
+              clobTokenIds: child.clobTokenIds,
+              question: child.question,
+              brief: child.brief,
+              tone: child.tone,
+              category: child.category,
+              status: child.status,
+              liquidity: child.liquidity,
+              yesShares: child.yesShares,
+              noShares: child.noShares,
+              volumePoints: child.volumePoints,
+              activeTraders: child.activeTraders,
+              closesAt: child.closesAt,
+              resolvesAt: child.resolvesAt,
+              resolutionSources: bundle.event.resolutionSources,
+              evidence: bundle.event.evidence,
+              updatedAt: new Date(),
+            },
+          });
+      } else if (existingMarketBySlug) {
+        await db
+          .update(markets)
+          .set({
+            ...marketValues,
+            id: undefined,
+            createdAt: undefined,
+          })
+          .where(eq(markets.id, existingMarketBySlug.id));
+      } else {
+        await db.insert(markets).values(marketValues);
+      }
     }
 
     const liveChildIds = bundle.childMarkets.map((child) => child.externalMarketId);

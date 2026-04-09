@@ -401,6 +401,7 @@ function inferContentOrigin(input: {
 }): ContentOrigin {
   if (
     input.externalSource === "polymarket" ||
+    input.externalSource === "news_report" ||
     input.sourceUrl?.includes("polymarket.com")
   ) {
     return "external_live";
@@ -455,7 +456,7 @@ function computeHomepageEligibility(input: {
   }
 
   if (input.contentOrigin === "external_live") {
-    return input.freshnessStatus === "fresh";
+    return input.freshnessStatus !== "missing";
   }
 
   return true;
@@ -1048,7 +1049,16 @@ export function buildHomeMarketSections(markets: MarketListItem[], now = new Dat
 
 export function buildHomeEventSections(events: EventListItem[], now = new Date()): HomeEventSection[] {
   const homepageEvents = events.filter((event) => event.homepageEligible);
-  const sortedByFeatured = [...homepageEvents].sort(
+  const featuredCandidates = homepageEvents.filter(
+    (event) => event.contentOrigin !== "external_live" || event.freshnessStatus === "fresh",
+  );
+  const sortedByFeatured = [...(featuredCandidates.length > 0 ? featuredCandidates : homepageEvents)].sort(
+    (left, right) =>
+      right.homepageRank - left.homepageRank ||
+      right.featuredScore - left.featuredScore ||
+      right.totalVolumePoints - left.totalVolumePoints,
+  );
+  const sortedForSecondarySections = [...homepageEvents].sort(
     (left, right) =>
       right.homepageRank - left.homepageRank ||
       right.featuredScore - left.featuredScore ||
@@ -1084,7 +1094,7 @@ export function buildHomeEventSections(events: EventListItem[], now = new Date()
   ];
 
   for (const topicKey of topicOrder) {
-    const topicEvents = sortedByFeatured.filter((event) => event.topicKey === topicKey).slice(0, 6);
+    const topicEvents = sortedForSecondarySections.filter((event) => event.topicKey === topicKey).slice(0, 6);
 
     if (topicEvents.length === 0) {
       continue;

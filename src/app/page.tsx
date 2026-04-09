@@ -25,6 +25,13 @@ export default async function HomePage() {
   const featuredMarkets = selectHomeFeaturedMarkets(sections, homepageEvents, 3);
   const featuredMarketIds = new Set(featuredMarkets.map((market) => market.id));
   const dedupedSections = excludeMarketsFromHomeSections(sections, featuredMarketIds, ["featured"]);
+  const aboveFoldEvents = Array.from(
+    new Map(
+      dedupedSections
+        .flatMap((section) => section.markets)
+        .map((event) => [event.id, event]),
+    ).values(),
+  ).slice(0, 6);
   const totalVolume = homepageEvents.reduce((sum, item) => sum + item.totalVolumePoints, 0);
   const activeTopics = new Set(homepageEvents.map((market) => market.topicKey)).size;
 
@@ -38,11 +45,11 @@ export default async function HomePage() {
                 <Link
                   key={market.id}
                   href={`/events/${market.slug}`}
-                  className="group block min-h-[22rem] overflow-hidden rounded-[1.5rem] border border-[var(--color-line)] bg-[var(--color-paper)] shadow-[0_14px_36px_rgba(11,31,77,0.1)] transition hover:-translate-y-0.5 hover:shadow-[0_18px_42px_rgba(11,31,77,0.14)]"
+                  className="group block min-h-[18.5rem] overflow-hidden rounded-[1.35rem] border border-[var(--color-line)] bg-[var(--color-paper)] shadow-[0_14px_36px_rgba(11,31,77,0.1)] transition hover:-translate-y-0.5 hover:shadow-[0_18px_42px_rgba(11,31,77,0.14)]"
                 >
                   <div className="grid h-full grid-cols-[42%_58%]">
                     <div className="grid border-r border-[var(--color-line)] bg-[rgba(11,31,77,0.04)]">
-                      <div className="relative min-h-[14rem]">
+                      <div className="relative min-h-[10.25rem]">
                         <Image
                           src={market.imageUrl}
                           alt={market.question}
@@ -52,17 +59,17 @@ export default async function HomePage() {
                         />
                       </div>
                       <div className="border-t border-[rgba(11,31,77,0.12)] bg-[rgba(246,248,252,0.96)] px-3 py-2">
-                        <p className="font-display text-[0.72rem] uppercase tracking-[0.18em] text-[var(--color-muted-ink)]">
+                        <p className="font-display text-[0.66rem] uppercase tracking-[0.16em] text-[var(--color-muted-ink)]">
                           timeline / 7d
                         </p>
-                        <div className="mt-1.5 h-11">
+                        <div className="mt-1.5 h-9">
                           <MiniChart slug={market.primaryChildMarket.slug} />
                         </div>
                       </div>
                     </div>
 
-                    <div className="flex min-w-0 flex-col p-3.5 lg:p-4">
-                      <div className="flex items-center justify-between gap-2 text-[0.66rem] uppercase tracking-[0.18em] text-[color:var(--color-muted-ink)]">
+                    <div className="flex min-w-0 flex-col p-3 lg:p-3.5">
+                      <div className="flex items-center justify-between gap-2 text-[0.62rem] uppercase tracking-[0.16em] text-[color:var(--color-muted-ink)]">
                         <span className="rounded-full border border-[rgba(29,78,216,0.24)] bg-[rgba(29,78,216,0.08)] px-2.5 py-1 text-[var(--color-accent-deep)]">
                           事件 {String(index + 1).padStart(2, "0")}
                         </span>
@@ -71,11 +78,11 @@ export default async function HomePage() {
                         </span>
                       </div>
 
-                      <h2 className="mt-3 line-clamp-2 text-[1.12rem] leading-[1.08] font-semibold text-[var(--color-ink)] xl:text-[1.18rem]">
+                      <h2 className="mt-2.5 line-clamp-2 text-[1rem] leading-[1.1] font-semibold text-[var(--color-ink)] xl:text-[1.06rem]">
                         {market.question}
                       </h2>
-                      <p className="mt-1.5 line-clamp-2 text-[0.8rem] leading-5 text-[color:var(--color-muted-ink)]">{market.brief}</p>
-                      <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[0.64rem] uppercase tracking-[0.16em] text-[color:var(--color-muted-ink)]">
+                      <p className="mt-1 line-clamp-2 text-[0.74rem] leading-4 text-[color:var(--color-muted-ink)]">{market.brief}</p>
+                      <div className="mt-2 flex flex-wrap items-center gap-1 text-[0.58rem] uppercase tracking-[0.14em] text-[color:var(--color-muted-ink)]">
                         <span className="rounded-full border border-[var(--color-line)] bg-white px-2.5 py-1">
                           {getContentOriginLabel(market.contentOrigin)}
                         </span>
@@ -91,31 +98,31 @@ export default async function HomePage() {
                         ) : null}
                       </div>
 
-                      <div className="mt-3 grid grid-cols-2 gap-2">
-                        <div className="rounded-[0.95rem] border border-[rgba(29,78,216,0.2)] bg-[rgba(29,78,216,0.06)] px-3 py-2">
-                          <p className="font-display text-[0.72rem] uppercase tracking-[0.14em] text-[color:var(--color-muted-ink)]">YES</p>
-                          <p className="mt-1 font-display text-[1.6rem] leading-none text-[var(--color-accent-deep)]">
+                      <div className="mt-2.5 grid grid-cols-2 gap-2">
+                        <div className="rounded-[0.9rem] border border-[rgba(29,78,216,0.2)] bg-[rgba(29,78,216,0.06)] px-3 py-2">
+                          <p className="font-display text-[0.66rem] uppercase tracking-[0.12em] text-[color:var(--color-muted-ink)]">YES</p>
+                          <p className="mt-1 font-display text-[1.35rem] leading-none text-[var(--color-accent-deep)]">
                             {formatPercent(market.probability.yes)}
                           </p>
                         </div>
-                        <div className="rounded-[0.95rem] border border-[rgba(244,180,0,0.34)] bg-[rgba(244,180,0,0.12)] px-3 py-2">
-                          <p className="font-display text-[0.72rem] uppercase tracking-[0.14em] text-[color:var(--color-muted-ink)]">VOL</p>
-                          <p className="mt-1 font-display text-[1.2rem] leading-none text-[var(--color-ink)]">
+                        <div className="rounded-[0.9rem] border border-[rgba(244,180,0,0.34)] bg-[rgba(244,180,0,0.12)] px-3 py-2">
+                          <p className="font-display text-[0.66rem] uppercase tracking-[0.12em] text-[color:var(--color-muted-ink)]">VOL</p>
+                          <p className="mt-1 font-display text-[1.02rem] leading-none text-[var(--color-ink)]">
                             {formatCompactNumber(market.totalVolumePoints)}
                           </p>
                         </div>
-                        <div className="rounded-[0.95rem] border border-[var(--color-line)] bg-white px-3 py-2">
-                          <p className="font-display text-[0.72rem] uppercase tracking-[0.14em] text-[color:var(--color-muted-ink)]">TOPIC</p>
-                          <p className="mt-1 truncate text-[0.9rem] font-medium text-[var(--color-ink)]">{market.topicLabel}</p>
+                        <div className="rounded-[0.9rem] border border-[var(--color-line)] bg-white px-3 py-2">
+                          <p className="font-display text-[0.66rem] uppercase tracking-[0.12em] text-[color:var(--color-muted-ink)]">TOPIC</p>
+                          <p className="mt-1 truncate text-[0.82rem] font-medium text-[var(--color-ink)]">{market.topicLabel}</p>
                         </div>
-                        <div className="rounded-[0.95rem] border border-[var(--color-line)] bg-white px-3 py-2">
-                          <p className="font-display text-[0.72rem] uppercase tracking-[0.14em] text-[color:var(--color-muted-ink)]">CLOSE</p>
-                          <p className="mt-1 text-[0.9rem] font-medium text-[var(--color-ink)]">{formatDateLabel(market.closesAt)}</p>
+                        <div className="rounded-[0.9rem] border border-[var(--color-line)] bg-white px-3 py-2">
+                          <p className="font-display text-[0.66rem] uppercase tracking-[0.12em] text-[color:var(--color-muted-ink)]">CLOSE</p>
+                          <p className="mt-1 text-[0.82rem] font-medium text-[var(--color-ink)]">{formatDateLabel(market.closesAt)}</p>
                         </div>
                       </div>
 
-                      <div className="mt-auto pt-3">
-                        <span className="inline-flex items-center gap-2 rounded-full border border-[rgba(29,78,216,0.34)] bg-[var(--color-accent)] px-3.5 py-2 text-[0.82rem] font-medium text-white transition group-hover:bg-[var(--color-accent-deep)]">
+                      <div className="mt-auto pt-2.5">
+                        <span className="inline-flex items-center gap-2 rounded-full border border-[rgba(29,78,216,0.34)] bg-[var(--color-accent)] px-3 py-1.5 text-[0.76rem] font-medium text-white transition group-hover:bg-[var(--color-accent-deep)]">
                           进入详情 <ArrowRight className="h-4 w-4" />
                         </span>
                       </div>
@@ -125,21 +132,59 @@ export default async function HomePage() {
               ))}
             </div>
 
-            <div className="grid gap-0 overflow-hidden rounded-[1.5rem] border border-[var(--color-line)] md:grid-cols-3">
+            <div className="grid gap-0 overflow-hidden rounded-[1.4rem] border border-[var(--color-line)] md:grid-cols-3">
               {[
                 { icon: Radar, label: "事件总数", value: `${homepageEvents.length} 个`, tone: "bg-white text-[var(--color-ink)]" },
                 { icon: Orbit, label: "活跃题材", value: `${activeTopics} 类`, tone: "bg-[var(--color-secondary)] text-white" },
                 { icon: ChartNoAxesCombined, label: "模拟成交积分", value: formatCompactNumber(totalVolume), tone: "bg-[var(--color-accent-deep)] text-white" },
               ].map((item) => (
-                <div key={item.label} className={`flex items-center justify-between gap-3 px-5 py-4 ${item.tone}`}>
+                <div key={item.label} className={`flex items-center justify-between gap-3 px-4 py-3 ${item.tone}`}>
                   <div className="flex items-center gap-3">
                     <item.icon className="h-4 w-4" />
-                    <span className="font-display text-[0.92rem] uppercase tracking-[0.14em]">{item.label}</span>
+                    <span className="font-display text-[0.82rem] uppercase tracking-[0.12em]">{item.label}</span>
                   </div>
-                  <span className="font-display text-[1.55rem] leading-none">{item.value}</span>
+                  <span className="font-display text-[1.35rem] leading-none">{item.value}</span>
                 </div>
               ))}
             </div>
+
+            {aboveFoldEvents.length > 0 ? (
+              <div className="rounded-[1.25rem] border border-[var(--color-line)] bg-white px-3 py-2.5 shadow-[0_10px_22px_rgba(11,31,77,0.06)]">
+                <div className="mb-2 flex items-center justify-between gap-3">
+                  <p className="font-mono text-[0.62rem] uppercase tracking-[0.26em] text-[var(--color-accent)]">更多事件</p>
+                  <p className="text-[0.74rem] text-[color:var(--color-muted-ink)]">首屏继续可见，不止 3 条</p>
+                </div>
+                <div className="flex gap-2 overflow-x-auto pb-1">
+                  {aboveFoldEvents.map((event) => (
+                    <Link
+                      key={event.id}
+                      href={`/events/${event.slug}`}
+                      className="min-w-[13rem] flex-1 rounded-[1rem] border border-[var(--color-line)] bg-[var(--color-paper-soft)] px-3 py-2.5 transition hover:border-[rgba(29,78,216,0.35)] hover:bg-white"
+                    >
+                      <div className="flex items-center justify-between gap-2 text-[0.58rem] uppercase tracking-[0.14em] text-[color:var(--color-muted-ink)]">
+                        <span>{event.topicLabel}</span>
+                        <span>{event.statusLabel}</span>
+                      </div>
+                      <p className="mt-1.5 line-clamp-2 text-[0.84rem] font-medium leading-5 text-[var(--color-ink)]">
+                        {event.question}
+                      </p>
+                      <div className="mt-2 flex items-end justify-between gap-3">
+                        <div>
+                          <p className="text-[0.56rem] uppercase tracking-[0.14em] text-[color:var(--color-muted-ink)]">YES</p>
+                          <p className="font-display text-[1.1rem] leading-none text-[var(--color-accent-deep)]">
+                            {formatPercent(event.probability.yes)}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-[0.56rem] uppercase tracking-[0.14em] text-[color:var(--color-muted-ink)]">锁盘</p>
+                          <p className="text-[0.76rem] font-medium text-[var(--color-ink)]">{formatDateLabel(event.closesAt)}</p>
+                        </div>
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            ) : null}
           </section>
 
           <HomeMarketFeed sections={dedupedSections} />
