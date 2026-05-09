@@ -58,6 +58,14 @@ export const homeFeedStatusOptions: Array<{ value: HomeFeedStatus; label: string
 ];
 export const homeFeedSectionPreviewCount = 24;
 
+export function hasLowQualityHomeTitle(market: FeedItem) {
+  return (
+    market.sourceName === "外部事件库" &&
+    /[\u4e00-\u9fff]/.test(market.question) &&
+    /相关|任意|\bHow\b|\bthe\b|___|presidential nomination|\b[a-z]{3,}\b/i.test(market.question)
+  );
+}
+
 export function selectHomeFeaturedMarkets<T extends FeedItem>(
   sections: FeedSection<T>[],
   fallbackMarkets: T[],
@@ -69,9 +77,12 @@ export function selectHomeFeaturedMarkets<T extends FeedItem>(
   const selectedTopics = new Set<MarketTopicKey>();
   const isStaleExternal = (market: T) =>
     market.contentOrigin === "external_live" && market.freshnessStatus !== "fresh";
-  const preferredFeatured = featured.filter((market) => !isStaleExternal(market));
-  const preferredFallback = fallbackMarkets.filter((market) => !isStaleExternal(market));
-  const sources = [preferredFeatured, preferredFallback, featured, fallbackMarkets];
+  const hasLowQualityTitle = (market: T) => hasLowQualityHomeTitle(market);
+  const preferredFeatured = featured.filter((market) => !isStaleExternal(market) && !hasLowQualityTitle(market));
+  const preferredFallback = fallbackMarkets.filter((market) => !isStaleExternal(market) && !hasLowQualityTitle(market));
+  const cleanFeatured = featured.filter((market) => !hasLowQualityTitle(market));
+  const cleanFallback = fallbackMarkets.filter((market) => !hasLowQualityTitle(market));
+  const sources = [preferredFeatured, preferredFallback, cleanFeatured, cleanFallback];
 
   for (const markets of sources) {
     for (const market of markets) {
@@ -123,8 +134,8 @@ export function excludeMarketsFromHomeSections<T extends FeedItem>(
       ...section,
       markets:
         scopedKeys && !scopedKeys.has(section.key)
-          ? section.markets
-          : section.markets.filter((market) => !excludedIds.has(market.id)),
+          ? section.markets.filter((market) => !hasLowQualityHomeTitle(market))
+          : section.markets.filter((market) => !excludedIds.has(market.id) && !hasLowQualityHomeTitle(market)),
     }))
     .filter((section) => section.markets.length > 0);
 }

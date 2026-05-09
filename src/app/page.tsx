@@ -116,7 +116,7 @@ export default async function HomePage() {
                     TOP {String(index + 1).padStart(2, "0")}
                   </div>
                 </div>
-                <div className="grid content-between gap-3 p-3.5">
+                <div className="flex h-full flex-col p-3.5">
                   <div>
                     <div className="flex items-center justify-between gap-2 text-[0.64rem] uppercase tracking-[0.16em] text-[color:var(--color-muted-ink)]">
                       <span>{market.topicLabel}</span>
@@ -147,14 +147,16 @@ export default async function HomePage() {
                       <p className="mt-1 text-[0.9rem] font-semibold text-[var(--color-ink)]">{formatDateLabel(market.closesAt)}</p>
                     </div>
                   </div>
-                  <div className="h-10">
-                    <MiniChart slug={market.primaryChildMarket.slug} />
-                  </div>
-                  <div className="flex items-center justify-between gap-3 text-[0.72rem] text-[color:var(--color-muted-ink)]">
-                    <span>{getContentOriginLabel(market.contentOrigin)}</span>
-                    <span className="inline-flex items-center gap-1 rounded-full bg-[var(--color-chip)] px-3 py-1.5 font-medium text-[var(--color-accent-deep)] shadow-[0_8px_16px_rgba(31,39,55,0.05)]">
-                      详情 <ArrowRight className="h-3.5 w-3.5" />
-                    </span>
+                  <div className="mt-auto pt-3">
+                    <div className="h-8 overflow-hidden rounded-full">
+                      <MiniChart slug={market.primaryChildMarket.slug} />
+                    </div>
+                    <div className="mt-2 flex items-center justify-between gap-3 text-[0.72rem] text-[color:var(--color-muted-ink)]">
+                      <span className="truncate">{getContentOriginLabel(market.contentOrigin)}</span>
+                      <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-[var(--color-chip)] px-3 py-1.5 font-medium text-[var(--color-accent-deep)] shadow-[0_8px_16px_rgba(31,39,55,0.05)]">
+                        详情 <ArrowRight className="h-3.5 w-3.5" />
+                      </span>
+                    </div>
                   </div>
                 </div>
               </Link>
