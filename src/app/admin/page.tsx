@@ -1,7 +1,9 @@
 import Link from "next/link";
 
 import { AdminMarketForm } from "@/components/admin-market-form";
+import { AdminProbeSourcesButton } from "@/components/admin-probe-sources-button";
 import { AdminStatusActions } from "@/components/admin-status-actions";
+import { AdminSyncExternalButton } from "@/components/admin-sync-external-button";
 import { SiteShell } from "@/components/site-shell";
 import { requireAdminSession } from "@/lib/auth/session";
 import {
@@ -26,6 +28,8 @@ export default async function AdminPage() {
   ]);
   const draftOrReviewCount = markets.filter((market) => market.status === "draft" || market.status === "review").length;
   const liveCount = markets.filter((market) => market.status === "live").length;
+  const sourceReport = readiness.checks.sources;
+  const catalogCoverage = readiness.checks.catalog;
 
   return (
     <SiteShell currentPath="/admin" hideHero>
@@ -60,6 +64,12 @@ export default async function AdminPage() {
               >
                 打开结算台
               </Link>
+              <Link
+                href="/admin/candidates"
+                className="rounded-full border border-[var(--color-line)] px-3 py-1.5 text-[0.7rem] text-[var(--color-ink)] transition hover:border-black/20"
+              >
+                候选事件
+              </Link>
             </div>
             <div className="mt-3 space-y-2">
               {queue.slice(0, 4).map((market) => (
@@ -77,15 +87,19 @@ export default async function AdminPage() {
           <div className="rounded-[1.45rem] border border-[var(--color-line)] bg-white p-4 shadow-[0_12px_26px_rgba(11,31,77,0.08)]">
             <div className="flex items-center justify-between gap-3">
               <p className="font-mono text-[0.62rem] uppercase tracking-[0.28em] text-[var(--color-accent)]">系统状态</p>
-              <span
-                className={`rounded-full px-2.5 py-1 text-[0.68rem] ${
-                  readiness.ok
-                    ? "bg-[rgba(29,78,216,0.08)] text-[var(--color-accent-deep)]"
-                    : "bg-[rgba(198,40,40,0.08)] text-[var(--color-secondary-deep)]"
-                }`}
-              >
-                {readiness.ok ? "ready" : "attention"}
-              </span>
+              <div className="flex items-center gap-2">
+                <AdminSyncExternalButton />
+                <AdminProbeSourcesButton />
+                <span
+                  className={`rounded-full px-2.5 py-1 text-[0.68rem] ${
+                    readiness.ok
+                      ? "bg-[rgba(29,78,216,0.08)] text-[var(--color-accent-deep)]"
+                      : "bg-[rgba(198,40,40,0.08)] text-[var(--color-secondary-deep)]"
+                  }`}
+                >
+                  {readiness.ok ? "ready" : "attention"}
+                </span>
+              </div>
             </div>
             <div className="mt-3 grid grid-cols-2 gap-2">
               <div className="rounded-[0.95rem] border border-[var(--color-line)] bg-[var(--color-paper-soft)] px-3 py-2.5">
@@ -95,6 +109,20 @@ export default async function AdminPage() {
               <div className="rounded-[0.95rem] border border-[var(--color-line)] bg-[var(--color-paper-soft)] px-3 py-2.5">
                 <p className="text-[0.62rem] uppercase tracking-[0.18em] text-[color:var(--color-muted-ink)]">Stale 外部</p>
                 <p className="mt-1 text-[1.1rem] font-semibold text-[var(--color-ink)]">{homepageSummary.staleExternalCount}</p>
+              </div>
+              <div className="rounded-[0.95rem] border border-[var(--color-line)] bg-[var(--color-paper-soft)] px-3 py-2.5">
+                <p className="text-[0.62rem] uppercase tracking-[0.18em] text-[color:var(--color-muted-ink)]">外部事件</p>
+                <p className="mt-1 text-[1.1rem] font-semibold text-[var(--color-ink)]">
+                  {catalogCoverage.eventCount}
+                  <span className="ml-1 text-[0.68rem] font-normal text-[color:var(--color-muted-ink)]">/ {catalogCoverage.minEvents}</span>
+                </p>
+              </div>
+              <div className="rounded-[0.95rem] border border-[var(--color-line)] bg-[var(--color-paper-soft)] px-3 py-2.5">
+                <p className="text-[0.62rem] uppercase tracking-[0.18em] text-[color:var(--color-muted-ink)]">外部盘口</p>
+                <p className="mt-1 text-[1.1rem] font-semibold text-[var(--color-ink)]">
+                  {catalogCoverage.marketCount}
+                  <span className="ml-1 text-[0.68rem] font-normal text-[color:var(--color-muted-ink)]">/ {catalogCoverage.minMarkets}</span>
+                </p>
               </div>
             </div>
             <div className="mt-2 grid gap-2">
@@ -114,6 +142,31 @@ export default async function AdminPage() {
                     : "暂无成功记录"}
                 </p>
               </div>
+            </div>
+            <div className="mt-3 space-y-2">
+              {sourceReport.sources.map((source) => (
+                <div key={source.name} className="rounded-[0.95rem] border border-[var(--color-line)] bg-[var(--color-paper-soft)] px-3 py-2.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <div>
+                      <p className="text-[0.74rem] font-medium text-[var(--color-ink)]">{source.label.replace(/Polymarket Gamma/gi, "事件目录源").replace(/Polymarket CLOB/gi, "盘口价格源")}</p>
+                      <p className="mt-0.5 text-[0.66rem] text-[color:var(--color-muted-ink)]">{source.role} / {source.latencyMs}ms</p>
+                    </div>
+                    <span
+                      className={`shrink-0 rounded-full px-2 py-1 text-[0.62rem] uppercase tracking-[0.14em] ${
+                        source.status === "ok"
+                          ? "bg-[rgba(29,78,216,0.08)] text-[var(--color-accent-deep)]"
+                          : "bg-[rgba(198,40,40,0.08)] text-[var(--color-secondary-deep)]"
+                      }`}
+                    >
+                      {source.status}
+                    </span>
+                  </div>
+                  <p className="mt-1.5 break-all text-[0.64rem] leading-4 text-[color:var(--color-muted-ink)]">{source.url}</p>
+                  {source.error ? (
+                    <p className="mt-1.5 line-clamp-2 text-[0.64rem] leading-4 text-[var(--color-secondary-deep)]">{source.error}</p>
+                  ) : null}
+                </div>
+              ))}
             </div>
             <div className="mt-3 grid gap-2">
               {readiness.checks.jobs.jobs.map((job) => (

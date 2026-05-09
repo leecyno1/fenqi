@@ -18,7 +18,7 @@ import {
 } from "./polymarket";
 import { getCnEntertainmentCandidates } from "./cn-entertainment";
 import { enrichCandidateWithNews } from "./enrich-news";
-import { getReportsGeneratedCandidates } from "./reports-generated";
+import { translateExternalTexts } from "./external-translation";
 
 export type SyncPolymarketOptions = {
   limit?: number;
@@ -41,7 +41,64 @@ export type SyncPolymarketPricesResult = {
   skipped: number;
 };
 
-function wrapStandaloneCandidate(candidate: NormalizedEventCandidate): NormalizedEventBundleCandidate {
+const DEFAULT_POLYMARKET_CATALOG_LIMIT = 300;
+const DEFAULT_POLYMARKET_PRICE_LIMIT = 120;
+const DEFAULT_POLYMARKET_PRICE_DISCOVERY_LIMIT = 240;
+const DEFAULT_POLYMARKET_PRICE_CONCURRENCY = 8;
+
+async function localizeExternalBundles(bundles: NormalizedEventBundleCandidate[]) {
+  const translationInputs = bundles
+    .filter((bundle) => bundle.event.externalSource === "polymarket")
+    .flatMap((bundle) => [
+      {
+        source: bundle.event.externalSource,
+        sourceId: bundle.event.externalEventId,
+        sourceSlug: bundle.event.externalEventSlug,
+        title: bundle.originalText?.title ?? bundle.event.title,
+        brief: bundle.originalText?.brief ?? bundle.event.brief,
+      },
+      ...bundle.childMarkets.map((child) => ({
+        source: child.externalSource,
+        sourceId: child.externalMarketId,
+        sourceSlug: child.externalMarketSlug,
+        title: bundle.originalText?.childMarkets[child.externalMarketId]?.question ?? child.question,
+        brief: bundle.originalText?.childMarkets[child.externalMarketId]?.brief ?? child.brief,
+      })),
+    ]);
+  const translations = await translateExternalTexts(translationInputs);
+
+  return bundles.map((bundle) => {
+    if (bundle.event.externalSource !== "polymarket") {
+      return bundle;
+    }
+
+    const eventTranslation = translations.get(`${bundle.event.externalSource}:${bundle.event.externalEventId}`);
+
+    return {
+      ...bundle,
+      event: eventTranslation
+        ? {
+            ...bundle.event,
+            title: eventTranslation.title,
+            brief: eventTranslation.brief,
+          }
+        : bundle.event,
+      childMarkets: bundle.childMarkets.map((child) => {
+        const childTranslation = translations.get(`${child.externalSource}:${child.externalMarketId}`);
+
+        return childTranslation
+          ? {
+              ...child,
+              question: childTranslation.title,
+              brief: childTranslation.brief,
+            }
+          : child;
+      }),
+    };
+  });
+}
+
+export function wrapStandaloneCandidate(candidate: NormalizedEventCandidate): NormalizedEventBundleCandidate {
   return {
     event: {
       externalSource: candidate.externalSource,
@@ -266,31 +323,47 @@ function chooseAnchorMode(input: {
   return "external";
 }
 
+async function getPolymarketEventBundles(options: SyncPolymarketOptions = {}) {
+  const polymarketLimit = options.limit ?? DEFAULT_POLYMARKET_CATALOG_LIMIT;
+
+  return filterBinaryPolymarketEvents(
+    await fetchPolymarketEvents({
+      limit: polymarketLimit,
+      active: options.active ?? true,
+      allowFallback: process.env.POLYMARKET_ALLOW_BUNDLED_FALLBACK === "true",
+    }),
+  )
+    .slice(0, polymarketLimit)
+    .map(normalizePolymarketEvent);
+}
+
 async function getEventBundles(options: SyncPolymarketOptions = {}) {
-  const polymarketBundles =
-    options.candidates ??
-    filterBinaryPolymarketEvents(
-      await fetchPolymarketEvents({
-        limit: options.limit ?? 100,
-        active: options.active ?? true,
-        allowFallback: false,
-      }),
-    ).map(normalizePolymarketEvent);
+  const polymarketLimit = options.limit ?? DEFAULT_POLYMARKET_CATALOG_LIMIT;
 
   if (options.candidates) {
-    return polymarketBundles;
+    return options.candidates;
   }
 
-  const localBundles =
-    options.includeLocalCandidates === false
-      ? []
-      : getCnEntertainmentCandidates().map(wrapStandaloneCandidate);
+  const sourceTasks: Array<Promise<NormalizedEventBundleCandidate[]>> = [getPolymarketEventBundles(options)];
 
-  const reportsBundles = await getReportsGeneratedCandidates()
-    .then((candidates) => candidates.map(wrapStandaloneCandidate))
-    .catch(() => []);
+  if (options.includeLocalCandidates) {
+    sourceTasks.push(Promise.resolve(getCnEntertainmentCandidates().map(wrapStandaloneCandidate)));
+  }
 
-  return [...polymarketBundles.slice(0, 60), ...reportsBundles, ...localBundles];
+  const settledSources = await Promise.allSettled(sourceTasks);
+  const bundles = settledSources.flatMap((result) => (result.status === "fulfilled" ? result.value : []));
+
+  if (bundles.length === 0) {
+    const firstError = settledSources.find((result): result is PromiseRejectedResult => result.status === "rejected");
+    if (firstError) {
+      throw firstError.reason;
+    }
+  }
+
+  const polymarketBundles = bundles.filter((bundle) => bundle.event.externalSource === "polymarket").slice(0, polymarketLimit);
+  const secondaryBundles = bundles.filter((bundle) => bundle.event.externalSource !== "polymarket");
+
+  return [...polymarketBundles, ...secondaryBundles];
 }
 
 export async function syncPolymarketEvents(
@@ -309,6 +382,10 @@ export async function syncPolymarketEvents(
     ? dedupedBundles
     : await Promise.all(
         dedupedBundles.map(async (bundle) => {
+          if (bundle.event.externalSource !== "polymarket") {
+            return bundle;
+          }
+
           const enrichedEvent = await enrichCandidateWithNews(toEventEnrichmentCandidate(bundle.event), {
             cacheImage: options.cacheImage,
           });
@@ -316,13 +393,15 @@ export async function syncPolymarketEvents(
         }),
       );
 
-  if (enrichedBundles.length === 0) {
+  const localizedBundles = await localizeExternalBundles(enrichedBundles);
+
+  if (localizedBundles.length === 0) {
     return { inserted: 0, updated: 0, skipped: 0 };
   }
 
-  const eventIds = enrichedBundles.map((bundle) => bundle.event.externalEventId);
-  const eventSources = Array.from(new Set(enrichedBundles.map((bundle) => bundle.event.externalSource)));
-  const eventSlugs = Array.from(new Set(enrichedBundles.map((bundle) => bundle.event.slug)));
+  const eventIds = localizedBundles.map((bundle) => bundle.event.externalEventId);
+  const eventSources = Array.from(new Set(localizedBundles.map((bundle) => bundle.event.externalSource)));
+  const eventSlugs = Array.from(new Set(localizedBundles.map((bundle) => bundle.event.slug)));
   const existingEvents = await db
     .select({
       id: marketEvents.id,
@@ -364,14 +443,14 @@ export async function syncPolymarketEvents(
     }
   }
 
-  const childIds = enrichedBundles.flatMap((bundle) =>
+  const childIds = localizedBundles.flatMap((bundle) =>
     bundle.childMarkets.map((child) => child.externalMarketId),
   );
   const childSlugs = Array.from(
-    new Set(enrichedBundles.flatMap((bundle) => bundle.childMarkets.map((child) => child.externalMarketSlug))),
+    new Set(localizedBundles.flatMap((bundle) => bundle.childMarkets.map((child) => child.externalMarketSlug))),
   );
   const childSources = Array.from(
-    new Set(enrichedBundles.flatMap((bundle) => bundle.childMarkets.map((child) => child.externalSource))),
+    new Set(localizedBundles.flatMap((bundle) => bundle.childMarkets.map((child) => child.externalSource))),
   );
   const existingMarkets = childIds.length
     ? await db
@@ -419,7 +498,7 @@ export async function syncPolymarketEvents(
   let inserted = 0;
   let updated = 0;
 
-  for (const bundle of enrichedBundles) {
+  for (const bundle of localizedBundles) {
     const eventKey = `${bundle.event.externalSource}:${bundle.event.externalEventId}`;
     const existingEvent = existingEventMap.get(eventKey);
     const existingEventBySlug = existingEventSlugMap.get(bundle.event.slug);
@@ -564,21 +643,24 @@ export async function syncPolymarketEvents(
 export async function syncPolymarketCatalog(options: SyncPolymarketOptions = {}) {
   return syncPolymarketEvents({
     ...options,
-    limit: options.limit ?? 200,
+    includeLocalCandidates: options.includeLocalCandidates ?? true,
+    limit: options.limit ?? DEFAULT_POLYMARKET_CATALOG_LIMIT,
   });
 }
 
 export async function syncPolymarketPrices(
-  options: { limit?: number } = {},
+  options: { limit?: number; concurrency?: number } = {},
 ): Promise<SyncPolymarketPricesResult> {
+  const priceLimit = options.limit ?? DEFAULT_POLYMARKET_PRICE_LIMIT;
+  const discoveryLimit = Math.max(priceLimit, DEFAULT_POLYMARKET_PRICE_DISCOVERY_LIMIT);
   const bundles = filterBinaryPolymarketEvents(
     await fetchPolymarketEvents({
-      limit: options.limit ?? 100,
+      limit: discoveryLimit,
       active: true,
-      allowFallback: false,
+      allowFallback: process.env.POLYMARKET_ALLOW_BUNDLED_FALLBACK === "true",
     }),
   )
-    .slice(0, options.limit ?? 60)
+    .slice(0, priceLimit)
     .map(normalizePolymarketEvent);
   const children = bundles.flatMap((bundle) => bundle.childMarkets);
 
@@ -611,15 +693,12 @@ export async function syncPolymarketPrices(
       .filter((row): row is typeof row & { externalMarketId: string } => Boolean(row.externalMarketId))
       .map((row) => [row.externalMarketId, row]),
   );
-  let updated = 0;
-  let stale = 0;
-  let skipped = 0;
+  const concurrency = Math.max(1, Math.min(options.concurrency ?? DEFAULT_POLYMARKET_PRICE_CONCURRENCY, 20));
 
-  for (const child of children) {
+  async function syncChild(child: NormalizedChildMarketCandidate): Promise<SyncPolymarketPricesResult> {
     const row = rowsByExternalMarketId.get(child.externalMarketId);
     if (!row) {
-      skipped += 1;
-      continue;
+      return { updated: 0, stale: 0, skipped: 1 };
     }
 
     const clobTokenId = child.clobTokenIds[0];
@@ -669,11 +748,23 @@ export async function syncPolymarketPrices(
       recordedAt: priceUpdatedAt,
     });
 
-    updated += 1;
-    if (clobPrice?.stale) {
-      stale += 1;
+    return {
+      updated: 1,
+      stale: clobPrice?.stale ? 1 : 0,
+      skipped: 0,
+    };
+  }
+
+  const totals: SyncPolymarketPricesResult = { updated: 0, stale: 0, skipped: 0 };
+
+  for (let index = 0; index < children.length; index += concurrency) {
+    const results = await Promise.all(children.slice(index, index + concurrency).map(syncChild));
+    for (const result of results) {
+      totals.updated += result.updated;
+      totals.stale += result.stale;
+      totals.skipped += result.skipped;
     }
   }
 
-  return { updated, stale, skipped };
+  return totals;
 }

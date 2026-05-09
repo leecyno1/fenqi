@@ -57,7 +57,8 @@ export function resolveMarketImageUrl(
   const preferredImage =
     pickImage(imageInput.manualImage) ??
     pickImage(imageInput.newsImageCachedUrl) ??
-    pickImage(imageInput.newsImageUrl);
+    pickImage(imageInput.newsImageUrl) ??
+    pickImage(imageInput.externalImageUrl);
 
   if (preferredImage) {
     return preferredImage;

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { getAuthPolicy, getServerEnv } from "./env";
+import { getAuthPolicy, getPublicSiteConfig, getServerEnv } from "./env";
 
 describe("server env", () => {
   it("fails in production when required secrets are missing", () => {
@@ -28,6 +28,30 @@ describe("server env", () => {
     expect(env.databaseUrl).toBe("postgres://fenqi:secret@db.example.com:5432/fenqi");
     expect(env.appUrl).toBe("https://fenqi.example.com");
     expect(env.supportEmail).toBe("ops@fenqi.example.com");
+  });
+});
+
+describe("public site config", () => {
+  it("does not require server-only secrets for public metadata and chrome", () => {
+    const config = getPublicSiteConfig({
+      NODE_ENV: "production",
+      NEXT_PUBLIC_APP_URL: "https://fenqi.example.com",
+      SUPPORT_EMAIL: "ops@fenqi.example.com",
+      APP_ICP_LICENSE: "京ICP备00000000号-1",
+    });
+
+    expect(config.appUrl).toBe("https://fenqi.example.com");
+    expect(config.supportEmail).toBe("ops@fenqi.example.com");
+    expect(config.icpLicense).toBe("京ICP备00000000号-1");
+  });
+
+  it("still validates the public app URL in production", () => {
+    expect(() =>
+      getPublicSiteConfig({
+        NODE_ENV: "production",
+        NEXT_PUBLIC_APP_URL: "not a url",
+      }),
+    ).toThrow(/NEXT_PUBLIC_APP_URL/);
   });
 });
 

@@ -16,7 +16,7 @@ export async function GET(
   if (
     (action !== "buy" && action !== "sell") ||
     (side !== "YES" && side !== "NO") ||
-    Number.isNaN(shareCount) ||
+    !Number.isFinite(shareCount) ||
     shareCount <= 0
   ) {
     return NextResponse.json({ error: "Invalid quote params." }, { status: 400 });

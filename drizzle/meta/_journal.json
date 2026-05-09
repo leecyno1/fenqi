@@ -50,6 +50,13 @@
       "when": 1775560152496,
       "tag": "0006_event_layer",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1775568200000,
+      "tag": "0007_external_text_translations",
+      "breakpoints": true
     }
   ]
 }

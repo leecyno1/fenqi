@@ -22,6 +22,15 @@ type ParsedServerEnv = {
   publicSecurityLicense: string | null;
 };
 
+type PublicSiteConfig = {
+  name: string;
+  appUrl: string;
+  supportEmail: string | null;
+  organizationName: string | null;
+  icpLicense: string | null;
+  publicSecurityLicense: string | null;
+};
+
 const nodeEnvSchema = z.enum(["development", "test", "production"]);
 const urlSchema = z.string().trim().url();
 const nonEmptyString = z.string().trim().min(1);
@@ -163,7 +172,7 @@ export function hasTransactionalEmail(env: ParsedServerEnv) {
 export function getAuthPolicy(input: RawEnv = process.env) {
   const env = getServerEnv(input);
   const canSendTransactionalEmail = hasTransactionalEmail(env);
-  const allowPublicSignup = canSendTransactionalEmail ? env.authAllowPublicSignup : env.nodeEnv !== "production";
+  const allowPublicSignup = env.authAllowPublicSignup;
   const requireEmailVerification = canSendTransactionalEmail && allowPublicSignup
     ? env.authRequireEmailVerification
     : false;
@@ -176,14 +185,15 @@ export function getAuthPolicy(input: RawEnv = process.env) {
 }
 
 export function getPublicSiteConfig(input: RawEnv = process.env) {
-  const env = getServerEnv(input);
+  const env = withEnvironmentDefaults(input);
+  const appUrl = requireUrl(env, "NEXT_PUBLIC_APP_URL");
 
   return {
     name: "分歧",
-    appUrl: env.appUrl,
-    supportEmail: env.supportEmail,
-    organizationName: env.organizationName,
-    icpLicense: env.icpLicense,
-    publicSecurityLicense: env.publicSecurityLicense,
-  };
+    appUrl,
+    supportEmail: normalizeOptional(env.SUPPORT_EMAIL),
+    organizationName: normalizeOptional(env.APP_ORG_NAME),
+    icpLicense: normalizeOptional(env.APP_ICP_LICENSE),
+    publicSecurityLicense: normalizeOptional(env.APP_PUBLIC_SECURITY_LICENSE),
+  } satisfies PublicSiteConfig;
 }

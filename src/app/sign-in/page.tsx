@@ -4,6 +4,7 @@ import { SignInForm } from "@/components/sign-in-form";
 import { SiteShell } from "@/components/site-shell";
 import { getAuthPolicy, getPublicSiteConfig } from "@/lib/env";
 import { getOptionalSession } from "@/lib/auth/session";
+import { normalizeInternalPath } from "@/lib/safe-path";
 
 export const dynamic = "force-dynamic";
 
@@ -16,16 +17,17 @@ export default async function SignInPage({
   const params = await searchParams;
   const authPolicy = getAuthPolicy();
   const siteConfig = getPublicSiteConfig();
+  const nextPath = normalizeInternalPath(params.next);
 
   if (session) {
-    redirect(params.next ?? "/");
+    redirect(nextPath);
   }
 
   return (
     <SiteShell>
       <div className="mx-auto w-full max-w-md">
         <SignInForm
-          nextPath={params.next ?? "/"}
+          nextPath={nextPath}
           allowPublicSignup={authPolicy.allowPublicSignup}
           requireEmailVerification={authPolicy.requireEmailVerification}
           supportEmail={siteConfig.supportEmail}

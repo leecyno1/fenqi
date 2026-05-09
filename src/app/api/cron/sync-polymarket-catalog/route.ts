@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { ensureCronAuthorization } from "@/lib/cron";
+import { getPolymarketCatalogCoverage } from "@/lib/health";
 import { syncPolymarketCatalog } from "@/lib/integrations/sync-polymarket";
 import { runTrackedJob } from "@/lib/jobs";
 
@@ -19,12 +20,14 @@ export async function POST(request: NextRequest) {
         summary,
       }),
     );
+    const catalog = await getPolymarketCatalogCoverage();
 
     return NextResponse.json({
       success: true,
       inserted: result.inserted,
       updated: result.updated,
       skipped: result.skipped,
+      catalog,
       timestamp: new Date().toISOString(),
     });
   } catch (error) {

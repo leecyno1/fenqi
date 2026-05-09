@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-
 import { formatPercent, formatPoints } from "@/lib/format";
+import { cn } from "@/lib/utils";
+import { Alert } from "./form-components";
 
 type MarketSide = "YES" | "NO";
 type TradeAction = "buy" | "sell";
@@ -363,15 +364,15 @@ export function TradeForm({
         </div>
 
         {error ? (
-          <div className="rounded-[0.95rem] border border-[rgba(198,40,40,0.28)] bg-[rgba(198,40,40,0.22)] px-3.5 py-2.5 text-[0.78rem] text-[#ffe0df]">
+          <Alert tone="error" className={cn(submitting && "opacity-90")}>
             {error}
-          </div>
+          </Alert>
         ) : null}
 
         {success ? (
-          <div className="rounded-[0.95rem] border border-[rgba(29,78,216,0.3)] bg-[rgba(29,78,216,0.2)] px-3.5 py-2.5 text-[0.78rem] text-[#deebff]">
+          <Alert tone="success" className={cn(submitting && "opacity-90")}>
             交易已提交，页面即将刷新。
-          </div>
+          </Alert>
         ) : null}
 
         <button

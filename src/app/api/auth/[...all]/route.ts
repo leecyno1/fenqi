@@ -1,10 +1,10 @@
 import { toNextJsHandler } from "better-auth/next-js";
 
-import { auth } from "@/lib/auth";
+import { getAuth } from "@/lib/auth";
 import { getAuthPolicy } from "@/lib/env";
 import { applyRateLimit } from "@/lib/rate-limit";
+import { enforceTrustedWriteOrigin } from "@/lib/request-integrity";
 
-const handlers = toNextJsHandler(auth);
 const limitedAuthRoutes = new Set([
   "sign-in/email",
   "sign-up/email",
@@ -13,12 +13,23 @@ const limitedAuthRoutes = new Set([
   "reset-password",
 ]);
 
-export const GET = handlers.GET;
+function getHandlers() {
+  return toNextJsHandler(getAuth());
+}
+
+export async function GET(request: Request) {
+  return getHandlers().GET(request);
+}
 
 export async function POST(
   request: Request,
   context: { params: Promise<{ all?: string[] }> },
 ) {
+  const untrustedOrigin = enforceTrustedWriteOrigin(request);
+  if (untrustedOrigin) {
+    return untrustedOrigin;
+  }
+
   const { all } = await context.params;
   const routeKey = all?.join("/") ?? "";
   const authPolicy = getAuthPolicy();
@@ -48,5 +59,5 @@ export async function POST(
     }
   }
 
-  return handlers.POST(request);
+  return getHandlers().POST(request);
 }

@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { authClient } from "@/lib/auth-client";
+import { normalizeInternalPath } from "@/lib/safe-path";
 
 type AuthMode = "sign-in" | "sign-up";
 
@@ -23,6 +24,7 @@ export function SignInForm({
   initialNotice?: string;
 }) {
   const router = useRouter();
+  const safeNextPath = normalizeInternalPath(nextPath);
   const [mode, setMode] = useState<AuthMode>("sign-in");
   const [name, setName] = useState("");
   const [email, setEmail] = useState(initialEmail);
@@ -43,12 +45,13 @@ export function SignInForm({
     setNoticeMessage("");
 
     try {
-      const normalizedEmail = email.trim();
-      const payload = {
-        email: normalizedEmail,
-        password,
-        callbackURL: nextPath,
-      };
+      const normalizedAccount = email.trim();
+      const normalizedEmail = /^\d{11}$/.test(normalizedAccount) ? `${normalizedAccount}@test.local` : normalizedAccount;
+        const payload = {
+          email: normalizedEmail,
+          password,
+          callbackURL: safeNextPath,
+        };
 
       const result =
         mode === "sign-in"
@@ -76,7 +79,7 @@ export function SignInForm({
         return;
       }
 
-      router.push(nextPath);
+      router.push(safeNextPath);
       router.refresh();
     } catch (error) {
       setErrorMessage(
@@ -100,7 +103,7 @@ export function SignInForm({
     try {
       const result = await authClient.sendVerificationEmail({
         email: normalizedEmail,
-        callbackURL: nextPath,
+        callbackURL: safeNextPath,
       });
 
       if (result.error) {
@@ -169,15 +172,15 @@ export function SignInForm({
         ) : null}
 
         <label className="grid gap-1.5 text-[0.82rem] text-[var(--color-ink)]">
-          邮箱
+          账号 / 邮箱
           <input
             required
-            type="email"
+            type="text"
               value={email}
               onChange={(event) => setEmail(event.target.value)}
               className="rounded-[1rem] border border-black/10 bg-white px-4 py-2.5 outline-none transition focus:border-black/25"
-              placeholder="researcher@example.com"
-              autoComplete="email"
+              placeholder="手机号或 researcher@example.com"
+              autoComplete="username"
             />
         </label>
 

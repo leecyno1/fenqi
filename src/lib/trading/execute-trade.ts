@@ -53,6 +53,17 @@ export async function executeTrade(
   return db.transaction(async (tx) => {
     const now = new Date();
 
+    await tx.execute(sql`select id from market where id = ${input.marketId} for update`);
+    await tx.execute(sql`select id from virtual_wallet where user_id = ${input.userId} for update`);
+    await tx.execute(sql`
+      select user_id
+      from position
+      where user_id = ${input.userId}
+        and market_id = ${input.marketId}
+        and side = ${input.side}
+      for update
+    `);
+
     const [market] = await tx
       .select({
         id: markets.id,
@@ -228,30 +239,25 @@ export async function executeTrade(
       executedAt: now,
     });
 
-    if (input.action === "buy" && existingPosition) {
+    if (input.action === "buy") {
       await tx
-        .update(positions)
-        .set({
+        .insert(positions)
+        .values({
+          userId: input.userId,
+          marketId: input.marketId,
+          side: input.side,
           shareCount: nextPosition.shareCount,
           totalCost: nextPosition.totalCost,
           updatedAt: now,
         })
-        .where(
-          and(
-            eq(positions.userId, input.userId),
-            eq(positions.marketId, input.marketId),
-            eq(positions.side, input.side),
-          ),
-        );
-    } else if (input.action === "buy") {
-      await tx.insert(positions).values({
-        userId: input.userId,
-        marketId: input.marketId,
-        side: input.side,
-        shareCount: nextPosition.shareCount,
-        totalCost: nextPosition.totalCost,
-        updatedAt: now,
-      });
+        .onConflictDoUpdate({
+          target: [positions.userId, positions.marketId, positions.side],
+          set: {
+            shareCount: nextPosition.shareCount,
+            totalCost: nextPosition.totalCost,
+            updatedAt: now,
+          },
+        });
     } else if (nextPosition.shareCount === 0) {
       await tx
         .delete(positions)

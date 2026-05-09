@@ -1,5 +1,10 @@
 import type { marketCategoryEnum, marketStatusEnum } from "@/db/schema";
+import { request as httpRequest } from "node:http";
+import { request as httpsRequest } from "node:https";
+import { connect as tlsConnect } from "node:tls";
+import { URL } from "node:url";
 import { scaleDownPositivePoints } from "../points";
+import { localizeExternalBrief, localizeExternalQuestion } from "./localized-polymarket";
 import { POLYMARKET_FALLBACK_EVENTS } from "./polymarket-fallback";
 
 type MarketCategory = typeof marketCategoryEnum.enumValues[number];
@@ -174,6 +179,11 @@ export type NormalizedChildMarketCandidate = {
 export type NormalizedEventBundleCandidate = {
   event: NormalizedMarketEventCandidate;
   childMarkets: NormalizedChildMarketCandidate[];
+  originalText?: {
+    title: string;
+    brief: string;
+    childMarkets: Record<string, { question: string; brief: string }>;
+  };
 };
 
 export type NormalizedEventCandidate = {
@@ -223,8 +233,244 @@ export type NormalizedEventCandidate = {
 };
 
 const POLYMARKET_EVENT_URL = "https://polymarket.com/event";
-const POLYMARKET_CLOB_URL = "https://clob.polymarket.com";
-const POLYMARKET_EVENTS_API_URL = "https://gamma-api.polymarket.com/events";
+
+export function getPolymarketEventsApiUrl() {
+  return process.env.POLYMARKET_GAMMA_BASE_URL?.trim() || "https://gamma-api.polymarket.com/events";
+}
+
+export function getPolymarketClobUrl() {
+  return (process.env.POLYMARKET_CLOB_BASE_URL?.trim() || "https://clob.polymarket.com").replace(/\/$/, "");
+}
+
+function getPolymarketResolvedIp(source: "gamma" | "clob") {
+  const key = source === "gamma" ? "POLYMARKET_GAMMA_RESOLVED_IP" : "POLYMARKET_CLOB_RESOLVED_IP";
+  return process.env[key]?.trim() || null;
+}
+
+function getPolymarketProxyUrl() {
+  return (
+    process.env.POLYMARKET_HTTP_PROXY?.trim() ||
+    process.env.POLYMARKET_HTTPS_PROXY?.trim() ||
+    process.env.HTTPS_PROXY?.trim() ||
+    process.env.HTTP_PROXY?.trim() ||
+    process.env.https_proxy?.trim() ||
+    process.env.http_proxy?.trim() ||
+    null
+  );
+}
+
+function getPolymarketFetchTimeoutMs() {
+  const parsed = Number.parseInt(process.env.POLYMARKET_FETCH_TIMEOUT_MS ?? "8000", 10);
+  return Number.isFinite(parsed) ? parsed : 8000;
+}
+
+function canUseBundledPolymarketFallback() {
+  return process.env.POLYMARKET_ALLOW_BUNDLED_FALLBACK === "true";
+}
+
+type HttpLikeResponse = {
+  ok: boolean;
+  status: number;
+  text: () => Promise<string>;
+  json: () => Promise<unknown>;
+};
+
+function fetchViaResolvedIp(input: URL, resolvedIp: string, init: {
+  headers?: Record<string, string>;
+  timeoutMs: number;
+}): Promise<HttpLikeResponse> {
+  const isHttps = input.protocol === "https:";
+  const request = (isHttps ? httpsRequest : httpRequest)({
+    protocol: input.protocol,
+    hostname: resolvedIp,
+    port: input.port || (isHttps ? 443 : 80),
+    path: `${input.pathname}${input.search}`,
+    method: "GET",
+    headers: {
+      ...init.headers,
+      host: input.host,
+    },
+    servername: isHttps ? input.hostname : undefined,
+  });
+
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    const timeout = setTimeout(() => {
+      request.destroy(new Error("The operation was aborted due to timeout"));
+    }, init.timeoutMs);
+
+    request.on("response", (response) => {
+      response.on("data", (chunk) => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)));
+      response.on("end", () => {
+        clearTimeout(timeout);
+        const body = Buffer.concat(chunks).toString("utf8");
+        resolve({
+          ok: Boolean(response.statusCode && response.statusCode >= 200 && response.statusCode < 300),
+          status: response.statusCode ?? 0,
+          text: async () => body,
+          json: async () => JSON.parse(body) as unknown,
+        });
+      });
+    });
+
+    request.on("error", (error) => {
+      clearTimeout(timeout);
+      reject(error);
+    });
+
+    request.end();
+  });
+}
+
+function fetchViaHttpProxy(input: URL, proxyUrl: string, init: {
+  headers?: Record<string, string>;
+  timeoutMs: number;
+}): Promise<HttpLikeResponse> {
+  const proxy = new URL(proxyUrl);
+  const proxyPort = Number.parseInt(proxy.port || (proxy.protocol === "https:" ? "443" : "80"), 10);
+  const proxyAuth = proxy.username
+    ? `Basic ${Buffer.from(`${decodeURIComponent(proxy.username)}:${decodeURIComponent(proxy.password)}`).toString("base64")}`
+    : null;
+
+  if (input.protocol === "http:") {
+    const request = httpRequest({
+      protocol: proxy.protocol,
+      hostname: proxy.hostname,
+      port: proxyPort,
+      path: input.toString(),
+      method: "GET",
+      headers: {
+        ...init.headers,
+        host: input.host,
+        ...(proxyAuth ? { "proxy-authorization": proxyAuth } : {}),
+      },
+    });
+
+    return collectNodeResponse(request, init.timeoutMs);
+  }
+
+  return new Promise((resolve, reject) => {
+    const connectRequest = httpRequest({
+      protocol: proxy.protocol,
+      hostname: proxy.hostname,
+      port: proxyPort,
+      method: "CONNECT",
+      path: `${input.hostname}:${input.port || 443}`,
+      headers: {
+        host: `${input.hostname}:${input.port || 443}`,
+        ...(proxyAuth ? { "proxy-authorization": proxyAuth } : {}),
+      },
+    });
+    const timeout = setTimeout(() => {
+      connectRequest.destroy(new Error("The operation was aborted due to timeout"));
+    }, init.timeoutMs);
+
+    connectRequest.once("connect", (response, socket) => {
+      if (response.statusCode !== 200) {
+        clearTimeout(timeout);
+        socket.destroy();
+        reject(new Error(`Proxy CONNECT failed: ${response.statusCode ?? 0}`));
+        return;
+      }
+
+      const tlsSocket = tlsConnect({
+        socket,
+        servername: input.hostname,
+      });
+
+      tlsSocket.once("secureConnect", () => {
+        const request = httpsRequest({
+          protocol: input.protocol,
+          hostname: input.hostname,
+          port: input.port || 443,
+          path: `${input.pathname}${input.search}`,
+          method: "GET",
+          headers: init.headers,
+          createConnection: () => tlsSocket,
+        });
+        collectNodeResponse(request, init.timeoutMs, timeout).then(resolve, reject);
+      });
+      tlsSocket.once("error", (error) => {
+        clearTimeout(timeout);
+        reject(error);
+      });
+    });
+
+    connectRequest.once("error", (error) => {
+      clearTimeout(timeout);
+      reject(error);
+    });
+    connectRequest.end();
+  });
+}
+
+function collectNodeResponse(request: ReturnType<typeof httpRequest>, timeoutMs: number, existingTimeout?: NodeJS.Timeout) {
+  return new Promise<HttpLikeResponse>((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    const timeout = existingTimeout ?? setTimeout(() => {
+      request.destroy(new Error("The operation was aborted due to timeout"));
+    }, timeoutMs);
+
+    request.on("response", (response) => {
+      response.on("data", (chunk) => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)));
+      response.on("end", () => {
+        clearTimeout(timeout);
+        const body = Buffer.concat(chunks).toString("utf8");
+        resolve({
+          ok: Boolean(response.statusCode && response.statusCode >= 200 && response.statusCode < 300),
+          status: response.statusCode ?? 0,
+          text: async () => body,
+          json: async () => JSON.parse(body) as unknown,
+        });
+      });
+    });
+
+    request.on("error", (error) => {
+      clearTimeout(timeout);
+      reject(error);
+    });
+
+    request.end();
+  });
+}
+
+export async function fetchPolymarketUrl(input: {
+  url: string;
+  source: "gamma" | "clob";
+  headers?: Record<string, string>;
+  timeoutMs: number;
+}) {
+  const resolvedIp = getPolymarketResolvedIp(input.source);
+  const parsedUrl = new URL(input.url);
+
+  if (resolvedIp) {
+    return fetchViaResolvedIp(parsedUrl, resolvedIp, {
+      headers: input.headers,
+      timeoutMs: input.timeoutMs,
+    });
+  }
+
+  const proxyUrl = getPolymarketProxyUrl();
+  if (proxyUrl) {
+    return fetchViaHttpProxy(parsedUrl, proxyUrl, {
+      headers: input.headers,
+      timeoutMs: input.timeoutMs,
+    });
+  }
+
+  const response = await fetch(input.url, {
+    headers: input.headers,
+    cache: "no-store",
+    signal: AbortSignal.timeout(input.timeoutMs),
+  });
+
+  return {
+    ok: response.ok,
+    status: response.status,
+    text: () => response.text(),
+    json: () => response.json() as Promise<unknown>,
+  } satisfies HttpLikeResponse;
+}
 
 type FetchEventsVariant = {
   order?: string;
@@ -279,6 +525,30 @@ function createEventsQuery(input: {
   return query;
 }
 
+function createKeysetEventsQuery(input: {
+  limit: number;
+  cursor?: string | null;
+  active?: boolean;
+  variant: FetchEventsVariant;
+}) {
+  const query = new URLSearchParams();
+  query.set("limit", String(input.limit));
+  if (input.cursor) {
+    query.set("after_cursor", input.cursor);
+  }
+  if (input.variant.includeClosed) {
+    query.set("closed", "false");
+  }
+  if (input.variant.order) {
+    query.set("order", input.variant.order);
+    query.set("ascending", "false");
+  }
+  if (typeof input.active === "boolean") {
+    query.set("active", String(input.active));
+  }
+  return query;
+}
+
 function readEventsPayload(payload: unknown) {
   const normalize = (items: unknown[]) =>
     items.map(normalizePolymarketEventRecord).filter((item): item is PolymarketEvent => item !== null);
@@ -300,7 +570,25 @@ function readEventsPayload(payload: unknown) {
   throw new Error("Failed to fetch Polymarket events: unexpected payload shape");
 }
 
-async function fetchEventsPage(input: { limit: number; offset: number; active?: boolean }) {
+function readKeysetEventsPayload(payload: unknown) {
+  if (Array.isArray(payload)) {
+    return { events: readEventsPayload(payload), nextCursor: null };
+  }
+
+  if (typeof payload === "object" && payload !== null) {
+    const record = payload as Record<string, unknown>;
+    if (Array.isArray(record.events)) {
+      return {
+        events: readEventsPayload(record.events),
+        nextCursor: typeof record.next_cursor === "string" && record.next_cursor.trim() ? record.next_cursor : null,
+      };
+    }
+  }
+
+  throw new Error("Failed to fetch Polymarket events: unexpected keyset payload shape");
+}
+
+async function fetchEventsPage(input: { limit: number; offset: number; active?: boolean; timeoutMs?: number }) {
   let last422: { query: string; body: string } | null = null;
 
   for (const variant of EVENTS_QUERY_VARIANTS) {
@@ -310,12 +598,14 @@ async function fetchEventsPage(input: { limit: number; offset: number; active?: 
       active: input.active,
       variant,
     });
-    const url = `${POLYMARKET_EVENTS_API_URL}?${query.toString()}`;
-    const response = await fetch(url, {
+    const url = `${getPolymarketEventsApiUrl()}?${query.toString()}`;
+    const response = await fetchPolymarketUrl({
+      url,
+      source: "gamma",
       headers: {
         accept: "application/json",
       },
-      cache: "no-store",
+      timeoutMs: input.timeoutMs ?? getPolymarketFetchTimeoutMs(),
     });
 
     if (response.ok) {
@@ -343,6 +633,77 @@ async function fetchEventsPage(input: { limit: number; offset: number; active?: 
   ) as Error & { status?: number };
   error.status = 422;
   throw error;
+}
+
+async function fetchKeysetEventsPage(input: { limit: number; cursor?: string | null; active?: boolean; timeoutMs?: number }) {
+  let last422: { query: string; body: string } | null = null;
+
+  for (const variant of EVENTS_QUERY_VARIANTS) {
+    const query = createKeysetEventsQuery({
+      limit: input.limit,
+      cursor: input.cursor,
+      active: input.active,
+      variant,
+    });
+    const baseUrl = getPolymarketEventsApiUrl().replace(/\/events\/?$/, "/events/keyset");
+    const url = `${baseUrl}?${query.toString()}`;
+    const response = await fetchPolymarketUrl({
+      url,
+      source: "gamma",
+      headers: {
+        accept: "application/json",
+      },
+      timeoutMs: input.timeoutMs ?? getPolymarketFetchTimeoutMs(),
+    });
+
+    if (response.ok) {
+      const payload = (await response.json()) as unknown;
+      return readKeysetEventsPayload(payload);
+    }
+
+    const body = (await response.text()).trim();
+    if (response.status === 422) {
+      last422 = { query: query.toString(), body };
+      continue;
+    }
+
+    const error = new Error(
+      `Failed to fetch Polymarket keyset events: ${response.status}${body ? ` (${body.slice(0, 240)})` : ""}`,
+    ) as Error & { status?: number };
+    error.status = response.status;
+    throw error;
+  }
+
+  const error = new Error(
+    `Failed to fetch Polymarket keyset events: 422${
+      last422 ? ` (query=${last422.query}${last422.body ? `; body=${last422.body.slice(0, 240)}` : ""})` : ""
+    }`,
+  ) as Error & { status?: number };
+  error.status = 422;
+  throw error;
+}
+
+async function fetchPolymarketEventsByKeyset(input: { limit: number; active?: boolean; timeoutMs?: number }) {
+  const pageSize = Math.min(100, input.limit);
+  const events: PolymarketEvent[] = [];
+  let cursor: string | null = null;
+
+  while (events.length < input.limit) {
+    const page = await fetchKeysetEventsPage({
+      limit: Math.min(pageSize, input.limit - events.length),
+      cursor,
+      active: input.active,
+      timeoutMs: input.timeoutMs,
+    });
+    events.push(...page.events);
+
+    if (page.events.length < pageSize || !page.nextCursor) {
+      break;
+    }
+    cursor = page.nextCursor;
+  }
+
+  return events;
 }
 
 function clamp(value: number, min: number, max: number) {
@@ -466,11 +827,13 @@ export type ClobTokenPrice = {
 };
 
 async function fetchClobJson(path: string) {
-  const response = await fetch(`${POLYMARKET_CLOB_URL}${path}`, {
+  const response = await fetchPolymarketUrl({
+    url: `${getPolymarketClobUrl()}${path}`,
+    source: "clob",
     headers: {
       accept: "application/json",
     },
-    cache: "no-store",
+    timeoutMs: getPolymarketFetchTimeoutMs(),
   });
 
   if (!response.ok) {
@@ -674,8 +1037,16 @@ export function normalizePolymarketEvent(event: PolymarketEvent): NormalizedEven
       externalMarketSlug: market.slug,
       answerLabel: formatAnswerLabel(closesAt, index + 1),
       answerOrder: index + 1,
-      question: market.question?.trim() || event.title.trim(),
-      brief: buildChineseBrief(event, market, category),
+      question: localizeExternalQuestion({
+        question: market.question?.trim() || event.title.trim(),
+        slug: market.slug,
+        sourceName: "外部事件库",
+      }),
+      brief: localizeExternalBrief({
+        brief: buildChineseBrief(event, market, category),
+        question: market.question?.trim() || event.title.trim(),
+        sourceName: "外部事件库",
+      }),
       tone: "外部热点母池同步事件，采用中文摘要承接，保留时间边界与结算线索。",
       category,
       status: mapStatus(event, market),
@@ -704,6 +1075,17 @@ export function normalizePolymarketEvent(event: PolymarketEvent): NormalizedEven
   });
 
   const eventTags = Array.isArray(event.tags) ? event.tags : [];
+  const originalEventTitle = event.title.trim();
+  const originalEventBrief = buildChineseBrief(event, binaryMarkets[0], category);
+  const originalChildText = Object.fromEntries(
+    binaryMarkets.map((market) => [
+      market.id,
+      {
+        question: market.question?.trim() || originalEventTitle,
+        brief: buildChineseBrief(event, market, category),
+      },
+    ]),
+  );
 
   return {
     event: {
@@ -711,11 +1093,19 @@ export function normalizePolymarketEvent(event: PolymarketEvent): NormalizedEven
       externalEventId: event.id,
       externalEventSlug: event.slug,
       slug: event.slug,
-      title: event.title.trim(),
-      brief: buildChineseBrief(event, binaryMarkets[0], category),
+      title: localizeExternalQuestion({
+        question: event.title.trim(),
+        slug: event.slug,
+        sourceName: "外部事件库",
+      }),
+      brief: localizeExternalBrief({
+        brief: buildChineseBrief(event, binaryMarkets[0], category),
+        question: event.title.trim(),
+        sourceName: "外部事件库",
+      }),
       tone: "外部热点母池同步事件，采用中文摘要承接，保留时间边界与结算线索。",
       category,
-      sourceName: "Polymarket",
+      sourceName: "外部事件库",
       sourceUrl: canonicalSourceUrl,
       canonicalSourceUrl,
       externalImageUrl: event.image ?? binaryMarkets[0]?.image ?? null,
@@ -728,7 +1118,7 @@ export function normalizePolymarketEvent(event: PolymarketEvent): NormalizedEven
       isFeatured: Boolean(event.featured || binaryMarkets.some((market) => market.featured)),
       resolutionSources: [
         {
-          label: "Polymarket 事件页",
+          label: "原始事件页",
           href: canonicalSourceUrl,
         },
         ...(event.resolutionSource || binaryMarkets[0]?.resolutionSource
@@ -748,14 +1138,35 @@ export function normalizePolymarketEvent(event: PolymarketEvent): NormalizedEven
       lastSyncedAt: new Date(),
     },
     childMarkets,
+    originalText: {
+      title: originalEventTitle,
+      brief: originalEventBrief,
+      childMarkets: originalChildText,
+    },
   };
 }
 
-export async function fetchPolymarketEvents(options: { limit?: number; active?: boolean; allowFallback?: boolean } = {}) {
+export async function fetchPolymarketEvents(options: { limit?: number; active?: boolean; allowFallback?: boolean; timeoutMs?: number } = {}) {
   const targetLimit = options.limit ?? 100;
   const pageSize = Math.min(100, targetLimit);
 
   try {
+    try {
+      return await fetchPolymarketEventsByKeyset({
+        limit: targetLimit,
+        active: options.active,
+        timeoutMs: options.timeoutMs,
+      });
+    } catch (keysetError) {
+      const keysetStatus =
+        typeof keysetError === "object" && keysetError !== null
+          ? (keysetError as { status?: number }).status
+          : undefined;
+      if (keysetStatus !== 422) {
+        throw keysetError;
+      }
+    }
+
     const events: PolymarketEvent[] = [];
 
     for (let offset = 0; offset < targetLimit; offset += pageSize) {
@@ -765,11 +1176,28 @@ export async function fetchPolymarketEvents(options: { limit?: number; active?: 
           limit: Math.min(pageSize, targetLimit - offset),
           offset,
           active: options.active,
+          timeoutMs: options.timeoutMs,
         });
       } catch (error) {
         const status = typeof error === "object" && error !== null ? (error as { status?: number }).status : undefined;
         if (offset > 0 && status === 422) {
-          break;
+          try {
+            const keysetEvents = await fetchPolymarketEventsByKeyset({
+              limit: targetLimit,
+              active: options.active,
+              timeoutMs: options.timeoutMs,
+            });
+            return keysetEvents.length > events.length ? keysetEvents : events;
+          } catch (keysetError) {
+            const keysetStatus =
+              typeof keysetError === "object" && keysetError !== null
+                ? (keysetError as { status?: number }).status
+                : undefined;
+            if (keysetStatus === 422) {
+              break;
+            }
+            throw keysetError;
+          }
         }
         throw error;
       }
@@ -782,7 +1210,10 @@ export async function fetchPolymarketEvents(options: { limit?: number; active?: 
 
     return events;
   } catch (error) {
-    if (process.env.NODE_ENV === "production" || options.allowFallback === false) {
+    if (
+      options.allowFallback === false ||
+      (process.env.NODE_ENV === "production" && !canUseBundledPolymarketFallback())
+    ) {
       throw error;
     }
     console.warn("Falling back to bundled Polymarket snapshot.", error);

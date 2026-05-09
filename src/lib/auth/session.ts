@@ -12,10 +12,28 @@ export type AppSession = AccessUser & {
   email: string;
 };
 
+function isProductionBuildMissingServerConfig(error: unknown) {
+  return (
+    process.env.NEXT_PHASE === "phase-production-build" &&
+    error instanceof Error &&
+    /DATABASE_URL|BETTER_AUTH_SECRET|BETTER_AUTH_URL/i.test(error.message)
+  );
+}
+
 export async function getOptionalSession(): Promise<AppSession | null> {
-  const session = await auth.api.getSession({
-    headers: await headers(),
-  });
+  let session;
+
+  try {
+    session = await auth.api.getSession({
+      headers: await headers(),
+    });
+  } catch (error) {
+    if (isProductionBuildMissingServerConfig(error)) {
+      return null;
+    }
+
+    throw error;
+  }
 
   if (!session) {
     return null;

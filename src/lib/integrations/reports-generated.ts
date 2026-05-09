@@ -2,14 +2,13 @@ import { createHash } from "node:crypto";
 import { z } from "zod";
 
 import { scaleDownPositivePoints } from "../points";
-import { cacheRemoteImage } from "./image-cache";
+import { buildImageProxyUrl } from "@/lib/image-proxy";
 import {
   buildAnchoredLmsrState,
   buildHeatScoreBreakdown,
   type NormalizedEventCandidate,
 } from "./polymarket";
 
-const REPORTS_BASE_URL_DEFAULT = "http://45.197.148.64:8080";
 const REPORTS_LLM_BASE_URL_DEFAULT = "https://api.sfkey.cn/v1";
 const REPORTS_LLM_MODEL_DEFAULT = "minimax2.7";
 
@@ -70,7 +69,7 @@ type GeneratedSpec = z.infer<typeof generatedSpecSchema>;
 type ReportNewsItem = z.infer<typeof reportNewsItemSchema>;
 
 type ReportsRuntimeConfig = {
-  reportsBaseUrl: string;
+  reportsBaseUrl: string | null;
   llmBaseUrl: string;
   llmModel: string;
   llmApiKey: string | null;
@@ -114,7 +113,7 @@ function readReportsRuntimeConfig(): ReportsRuntimeConfig {
     : REPORTS_PLATFORM_ALLOWLIST_DEFAULT;
 
   return {
-    reportsBaseUrl: (process.env.REPORTS_BASE_URL ?? REPORTS_BASE_URL_DEFAULT).replace(/\/+$/, ""),
+    reportsBaseUrl: process.env.REPORTS_BASE_URL?.trim().replace(/\/+$/, "") || null,
     llmBaseUrl: (process.env.REPORTS_LLM_BASE_URL ?? REPORTS_LLM_BASE_URL_DEFAULT).replace(/\/+$/, ""),
     llmModel: process.env.REPORTS_LLM_MODEL ?? REPORTS_LLM_MODEL_DEFAULT,
     llmApiKey: process.env.REPORTS_LLM_API_KEY?.trim() || null,
@@ -224,10 +223,9 @@ async function resolveNewsImage(
     const html = await fetchText(news.url);
     const newsImageUrl = extractMetaImage(html, news.url);
     if (newsImageUrl) {
-      const cached = await cacheRemoteImage(newsImageUrl).catch(() => null);
       return {
         newsImageUrl,
-        newsImageCachedUrl: cached,
+        newsImageCachedUrl: buildImageProxyUrl(newsImageUrl),
         newsImageSource: news.platform_name,
       };
     }
@@ -388,7 +386,7 @@ function buildCandidateFromSpec(input: {
     brief: input.spec.brief,
     tone: "基于实时新闻榜单生成的可验证事件，使用模拟积分交易。",
     category: input.spec.category,
-    status: "live",
+    status: "review",
     closesAt: closeAt,
     resolvesAt: resolveAt,
     liquidity,
@@ -433,6 +431,10 @@ function buildCandidateFromSpec(input: {
 }
 
 async function fetchReportsNewsPool(config: ReportsRuntimeConfig, fetchJson: (url: string) => Promise<unknown>) {
+  if (!config.reportsBaseUrl) {
+    return [];
+  }
+
   const datesPayload = await fetchJson(`${config.reportsBaseUrl}/api/dates`);
   const dates = reportsDateSchema.parse(datesPayload);
   const latestDate = dates[0];
@@ -475,7 +477,7 @@ export async function getReportsGeneratedCandidates(
   deps: ReportsGenerationDeps = {},
 ): Promise<NormalizedEventCandidate[]> {
   const config = readReportsRuntimeConfig();
-  if (!config.llmApiKey) {
+  if (!config.llmApiKey || !config.reportsBaseUrl) {
     return [];
   }
 

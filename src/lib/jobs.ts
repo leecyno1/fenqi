@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 
 import { db } from "@/db/client";
 import { jobRuns } from "@/db/schema";
@@ -10,7 +10,9 @@ export const trackedJobNames = [
   "sync-polymarket-catalog",
   "enrich-news",
   "sync-polymarket-prices",
+  "probe-polymarket-sources",
   "record-snapshots",
+  "generate-news-candidates",
 ] as const;
 
 export type TrackedJobName = typeof trackedJobNames[number];
@@ -26,11 +28,29 @@ export type JobFreshnessItem = {
 };
 
 const freshnessThresholdsMinutes: Record<TrackedJobName, number> = {
-  "sync-polymarket-catalog": 8 * 60,
+  "sync-polymarket-catalog": 90,
   "enrich-news": 8 * 60,
-  "sync-polymarket-prices": 30,
+  "sync-polymarket-prices": 15,
+  "probe-polymarket-sources": 10,
   "record-snapshots": 120,
+  "generate-news-candidates": 8 * 60,
 };
+
+const jobSingleFlightWindowMs: Record<TrackedJobName, number> = {
+  "sync-polymarket-catalog": 20 * 60 * 1000,
+  "enrich-news": 30 * 60 * 1000,
+  "sync-polymarket-prices": 10 * 60 * 1000,
+  "probe-polymarket-sources": 5 * 60 * 1000,
+  "record-snapshots": 30 * 60 * 1000,
+  "generate-news-candidates": 30 * 60 * 1000,
+};
+
+export class JobAlreadyRunningError extends Error {
+  constructor(jobName: TrackedJobName) {
+    super(`Job already running: ${jobName}`);
+    this.name = "JobAlreadyRunningError";
+  }
+}
 
 export function evaluateJobFreshness(
   runs: Array<{
@@ -39,10 +59,16 @@ export function evaluateJobFreshness(
     finishedAt: Date | null;
   }>,
   now = new Date(),
+  requiredJobs: readonly TrackedJobName[] = trackedJobNames,
 ) {
+  const requiredJobSet = new Set<string>(requiredJobs);
   const latestByJob = new Map<string, { status: JobRunStatus; finishedAt: Date | null }>();
 
   for (const run of runs) {
+    if (run.status === "running" && !run.finishedAt) {
+      continue;
+    }
+
     if (!latestByJob.has(run.jobName)) {
       latestByJob.set(run.jobName, {
         status: run.status,
@@ -84,7 +110,7 @@ export function evaluateJobFreshness(
   });
 
   return {
-    ok: jobs.every((job) => job.status === "fresh"),
+    ok: jobs.every((job) => !requiredJobSet.has(job.jobName) || job.status === "fresh"),
     jobs,
   };
 }
@@ -123,13 +149,27 @@ export async function listLatestTrackedJobRuns() {
 export async function startJobRun(jobName: TrackedJobName) {
   const id = randomUUID();
   const startedAt = new Date();
+  const runningCutoff = new Date(startedAt.getTime() - jobSingleFlightWindowMs[jobName]);
 
-  await db.insert(jobRuns).values({
-    id,
-    jobName,
-    status: "running",
-    startedAt,
-  });
+  const inserted = await db.execute(sql`
+    insert into job_run (id, job_name, status, started_at)
+    select ${id}, ${jobName}, 'running', ${startedAt}
+    where not exists (
+      select 1
+      from job_run
+      where job_name = ${jobName}
+        and status = 'running'
+        and started_at >= ${runningCutoff}
+    )
+    returning id, started_at
+  `);
+
+  const createdRun = inserted.rows[0] as { id: string; started_at: Date } | undefined;
+
+  if (!createdRun) {
+    logger.warn("job_start_skipped_already_running", { jobName });
+    throw new JobAlreadyRunningError(jobName);
+  }
 
   logger.info("job_started", { jobName, jobRunId: id });
 

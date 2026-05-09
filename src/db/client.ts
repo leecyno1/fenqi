@@ -7,6 +7,15 @@ import * as schema from "./schema";
 
 let pool: Pool | null = null;
 
+const lazyPool = new Proxy({} as Pool, {
+  get(_target, property, receiver) {
+    const currentPool = getPool();
+    const value = Reflect.get(currentPool, property, receiver);
+
+    return typeof value === "function" ? value.bind(currentPool) : value;
+  },
+});
+
 export function getPool() {
   if (pool) {
     return pool;
@@ -22,6 +31,6 @@ export function getPool() {
 }
 
 export const db = drizzle({
-  client: getPool(),
+  client: lazyPool,
   schema,
 });

@@ -56,7 +56,7 @@ export const homeFeedStatusOptions: Array<{ value: HomeFeedStatus; label: string
   { value: "review", label: "待审核" },
   { value: "terminal", label: "已终态" },
 ];
-export const homeFeedSectionPreviewCount = 4;
+export const homeFeedSectionPreviewCount = 24;
 
 export function selectHomeFeaturedMarkets<T extends FeedItem>(
   sections: FeedSection<T>[],

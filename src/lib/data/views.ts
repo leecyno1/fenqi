@@ -7,10 +7,13 @@ import {
 } from "../markets/lmsr";
 import { scaleDownPositivePoints } from "../points";
 import {
-  HOMEPAGE_EXTERNAL_PRICE_MAX_AGE_MINUTES,
+  BACKOFFICE_CANDIDATE_EVENT_SOURCES,
+  HOMEPAGE_EXTERNAL_PRICE_FRESH_MAX_AGE_MINUTES,
+  LIVE_EXTERNAL_EVENT_SOURCES,
   LOCAL_CURATED_EVENT_SLUGS,
 } from "@/config/content-governance";
 import { resolveMarketImageUrl } from "./market-visuals";
+import { localizeExternalBrief, localizeExternalQuestion } from "@/lib/integrations/localized-polymarket";
 
 export type MarketTopicKey =
   | "politics"
@@ -23,7 +26,7 @@ export type MarketTopicKey =
 
 export type TrendDirection = "up" | "down" | "flat";
 export type PriceAnchorMode = "external" | "hybrid" | "local";
-export type ContentOrigin = "external_live" | "local_curated" | "seed_demo";
+export type ContentOrigin = "external_live" | "backoffice_candidate" | "local_curated" | "seed_demo";
 export type FreshnessStatus = "fresh" | "stale" | "missing";
 
 export type MarketListItem = {
@@ -34,6 +37,9 @@ export type MarketListItem = {
   sourceName: string | null;
   sourceUrl: string | null;
   newsImageSource: string | null;
+  newsReferences: NewsReferenceView[];
+  evidence: string[];
+  resolutionSource: ResolutionSourceView[];
   heatScore: number;
   controversyScore: number;
   isFeatured: boolean;
@@ -70,6 +76,19 @@ export type MarketListItem = {
     averagePrice: number;
     side: MarketSide;
   };
+};
+
+export type NewsReferenceView = {
+  sourceName: string;
+  articleUrl: string;
+  imageOriginalUrl?: string | null;
+  cachedImageUrl?: string | null;
+  fetchedAt?: string | null;
+};
+
+export type ResolutionSourceView = {
+  label: string;
+  href: string;
 };
 
 export type EventChildMarketView = {
@@ -114,9 +133,13 @@ export type EventListItem = {
   slug: string;
   createdAt: Date;
   imageUrl: string;
+  externalEventId: string | null;
   sourceName: string | null;
   sourceUrl: string | null;
   newsImageSource: string | null;
+  newsReferences: NewsReferenceView[];
+  evidence: string[];
+  resolutionSource: ResolutionSourceView[];
   heatScore: number;
   controversyScore: number;
   isFeatured: boolean;
@@ -156,6 +179,9 @@ export type EventListItem = {
   primaryChildMarket: EventChildMarketView;
 };
 
+type PublicHomepageContentOrigin = Exclude<ContentOrigin, "backoffice_candidate">;
+type PublicHomepageEventListItem = EventListItem & { contentOrigin: PublicHomepageContentOrigin };
+
 export type HomeMarketSection = {
   key: "featured" | "closing-soon" | MarketTopicKey;
   title: string;
@@ -167,7 +193,7 @@ export type HomeEventSection = {
   key: "featured" | "closing-soon" | MarketTopicKey;
   title: string;
   description: string;
-  markets: EventListItem[];
+  markets: PublicHomepageEventListItem[];
 };
 
 export type MarketDetailView = MarketListItem & {
@@ -182,17 +208,8 @@ export type MarketDetailView = MarketListItem & {
     label: string;
     href: string;
   } | null;
-  newsReferences: Array<{
-    sourceName: string;
-    articleUrl: string;
-    imageOriginalUrl?: string | null;
-    cachedImageUrl?: string | null;
-    fetchedAt?: string | null;
-  }>;
-  resolutionSource: Array<{
-    label: string;
-    href: string;
-  }>;
+  newsReferences: NewsReferenceView[];
+  resolutionSource: ResolutionSourceView[];
   resolution: {
     outcome: "YES" | "NO" | "VOID";
     sourceLabel: string;
@@ -209,17 +226,8 @@ export type EventDetailView = EventListItem & {
     label: string;
     href: string;
   } | null;
-  newsReferences: Array<{
-    sourceName: string;
-    articleUrl: string;
-    imageOriginalUrl?: string | null;
-    cachedImageUrl?: string | null;
-    fetchedAt?: string | null;
-  }>;
-  resolutionSource: Array<{
-    label: string;
-    href: string;
-  }>;
+  newsReferences: NewsReferenceView[];
+  resolutionSource: ResolutionSourceView[];
   resolution: {
     outcome: "YES" | "NO" | "VOID";
     sourceLabel: string;
@@ -332,6 +340,7 @@ const sectionDescriptions: Record<HomeMarketSection["key"], string> = {
 
 const contentOriginLabels: Record<ContentOrigin, string> = {
   external_live: "外部动态",
+  backoffice_candidate: "后台候选",
   local_curated: "本地策展",
   seed_demo: "演示样例",
 };
@@ -396,12 +405,20 @@ function isTradeableMarket(status: keyof typeof statusLabels, closesAt: Date, no
 
 function inferContentOrigin(input: {
   slug: string;
+  externalEventId?: string | null;
   externalSource?: string | null;
   sourceUrl?: string | null;
 }): ContentOrigin {
+  if (input.externalEventId?.startsWith("fallback-")) {
+    return "seed_demo";
+  }
+
+  if (input.externalSource && BACKOFFICE_CANDIDATE_EVENT_SOURCES.has(input.externalSource)) {
+    return "backoffice_candidate";
+  }
+
   if (
-    input.externalSource === "polymarket" ||
-    input.externalSource === "news_report" ||
+    (input.externalSource && LIVE_EXTERNAL_EVENT_SOURCES.has(input.externalSource)) ||
     input.sourceUrl?.includes("polymarket.com")
   ) {
     return "external_live";
@@ -429,6 +446,10 @@ function inferFreshnessStatus(input: {
     return "missing";
   }
 
+  if (input.contentOrigin === "backoffice_candidate") {
+    return input.lastUpdatedAt ? "fresh" : "missing";
+  }
+
   if (input.contentOrigin === "local_curated") {
     return "fresh";
   }
@@ -438,7 +459,19 @@ function inferFreshnessStatus(input: {
   }
 
   const ageMinutes = (now.getTime() - input.lastUpdatedAt.getTime()) / 60_000;
-  return ageMinutes <= HOMEPAGE_EXTERNAL_PRICE_MAX_AGE_MINUTES ? "fresh" : "stale";
+  return ageMinutes <= HOMEPAGE_EXTERNAL_PRICE_FRESH_MAX_AGE_MINUTES ? "fresh" : "stale";
+}
+
+function hasDisplayableExternalPrice(input: {
+  contentOrigin: ContentOrigin;
+  lastUpdatedAt?: Date | null;
+  externalPriceStale?: boolean;
+}) {
+  if (input.contentOrigin !== "external_live") {
+    return true;
+  }
+
+  return Boolean(input.lastUpdatedAt);
 }
 
 function computeHomepageEligibility(input: {
@@ -446,6 +479,8 @@ function computeHomepageEligibility(input: {
   status: keyof typeof statusLabels;
   closesAt: Date;
   freshnessStatus: FreshnessStatus;
+  lastUpdatedAt?: Date | null;
+  externalPriceStale?: boolean;
 }, now: Date) {
   if (!isTradeableMarket(input.status, input.closesAt, now)) {
     return false;
@@ -455,11 +490,45 @@ function computeHomepageEligibility(input: {
     return false;
   }
 
+  if (input.contentOrigin === "backoffice_candidate") {
+    return false;
+  }
+
   if (input.contentOrigin === "external_live") {
-    return input.freshnessStatus !== "missing";
+    return hasDisplayableExternalPrice(input);
   }
 
   return true;
+}
+
+function localizeExternalDisplayText(input: {
+  contentOrigin: ContentOrigin;
+  question: string;
+  brief: string;
+  slug: string;
+  sourceName?: string | null;
+}) {
+  if (input.contentOrigin !== "external_live") {
+    return {
+      question: input.question,
+      brief: input.brief,
+    };
+  }
+
+  const question = localizeExternalQuestion({
+    question: input.question,
+    slug: input.slug,
+    sourceName: input.sourceName,
+  });
+
+  return {
+    question,
+    brief: localizeExternalBrief({
+      brief: input.brief,
+      question,
+      sourceName: input.sourceName,
+    }),
+  };
 }
 
 function buildHomepageRank(input: {
@@ -475,9 +544,11 @@ function buildHomepageRank(input: {
 }) {
   const originBoost =
     input.contentOrigin === "external_live"
-      ? 120000
+      ? 140000
+      : input.contentOrigin === "backoffice_candidate"
+        ? -110000
       : input.contentOrigin === "local_curated"
-        ? 70000
+        ? 15000
         : -150000;
   const freshnessBoost =
     input.freshnessStatus === "fresh"
@@ -581,6 +652,9 @@ export function buildMarketListItem(
     sourceUrl?: string | null;
     externalSource?: string | null;
     newsImageSource?: string | null;
+    newsReferences?: NewsReferenceView[];
+    evidence?: string[];
+    resolutionSource?: ResolutionSourceView[];
     heatScore?: number;
     controversyScore?: number;
     isFeatured?: boolean;
@@ -653,6 +727,8 @@ export function buildMarketListItem(
       status: input.status,
       closesAt: input.closesAt,
       freshnessStatus,
+      lastUpdatedAt,
+      externalPriceStale: input.externalPriceStale,
     },
     now,
   );
@@ -666,6 +742,13 @@ export function buildMarketListItem(
     activeTraders: input.activeTraders,
     isFeatured: input.isFeatured ?? false,
     homepageEligible,
+  });
+  const displayText = localizeExternalDisplayText({
+    contentOrigin,
+    question: input.question,
+    brief: input.brief,
+    slug: input.slug,
+    sourceName: input.sourceName,
   });
 
   return {
@@ -681,6 +764,9 @@ export function buildMarketListItem(
     sourceName: input.sourceName ?? null,
     sourceUrl: input.sourceUrl ?? null,
     newsImageSource: input.newsImageSource ?? null,
+    newsReferences: input.newsReferences ?? [],
+    evidence: input.evidence ?? [],
+    resolutionSource: input.resolutionSource ?? [],
     heatScore: input.heatScore ?? 0,
     controversyScore: input.controversyScore ?? 0,
     isFeatured: input.isFeatured ?? false,
@@ -692,8 +778,8 @@ export function buildMarketListItem(
     priceAnchorMode: input.priceAnchorMode ?? "local",
     externalPriceUpdatedAt: input.externalPriceUpdatedAt ?? null,
     externalPriceStale: input.externalPriceStale ?? false,
-    question: input.question,
-    brief: input.brief,
+    question: displayText.question,
+    brief: displayText.brief,
     status: input.status,
     categoryLabel: categoryLabels[input.category],
     statusLabel: statusLabels[input.status],
@@ -722,10 +808,7 @@ export function buildMarketDetailView(
     tone: string;
     evidence: string[];
     parentEvent?: MarketDetailView["parentEvent"];
-    resolutionSource: Array<{
-      label: string;
-      href: string;
-    }>;
+    resolutionSource: ResolutionSourceView[];
     resolution: MarketDetailView["resolution"];
     newsReferences?: MarketDetailView["newsReferences"];
   },
@@ -735,7 +818,7 @@ export function buildMarketDetailView(
     tone: input.tone,
     evidence: input.evidence,
     parentEvent: input.parentEvent ?? null,
-    externalReference: input.sourceName && input.sourceUrl ? { label: input.sourceName, href: input.sourceUrl } : null,
+    externalReference: input.sourceName && input.sourceUrl ? { label: input.sourceName.replace(/Polymarket/gi, "外部事件库"), href: input.sourceUrl } : null,
     newsReferences: input.newsReferences ?? [],
     resolutionSource: input.resolutionSource,
     resolution: input.resolution,
@@ -849,10 +932,14 @@ export function buildEventListItem(
     newsImageCachedUrl?: string | null;
     newsImageUrl?: string | null;
     externalImageUrl?: string | null;
+    externalEventId?: string | null;
     externalSource?: string | null;
     sourceName?: string | null;
     sourceUrl?: string | null;
     newsImageSource?: string | null;
+    newsReferences?: NewsReferenceView[];
+    evidence?: string[];
+    resolutionSource?: ResolutionSourceView[];
     heatScore?: number;
     controversyScore?: number;
     isFeatured?: boolean;
@@ -877,6 +964,7 @@ export function buildEventListItem(
     ((input.isFeatured ?? false) ? 42000 : 0);
   const contentOrigin = inferContentOrigin({
     slug: input.slug,
+    externalEventId: input.externalEventId,
     externalSource: input.externalSource,
     sourceUrl: input.sourceUrl,
   });
@@ -897,6 +985,8 @@ export function buildEventListItem(
       status: primaryChildMarket.status,
       closesAt: primaryChildMarket.closesAt,
       freshnessStatus,
+      lastUpdatedAt,
+      externalPriceStale: primaryChildMarket.externalPriceStale,
     },
     now,
   );
@@ -911,6 +1001,13 @@ export function buildEventListItem(
     isFeatured: input.isFeatured ?? false,
     homepageEligible,
   });
+  const displayText = localizeExternalDisplayText({
+    contentOrigin,
+    question: input.title,
+    brief: input.brief,
+    slug: input.slug,
+    sourceName: input.sourceName,
+  });
 
   return {
     id: input.id,
@@ -922,9 +1019,13 @@ export function buildEventListItem(
       newsImageUrl: input.newsImageUrl,
       externalImageUrl: input.externalImageUrl,
     }),
+    externalEventId: input.externalEventId ?? null,
     sourceName: input.sourceName ?? null,
     sourceUrl: input.sourceUrl ?? null,
     newsImageSource: input.newsImageSource ?? null,
+    newsReferences: input.newsReferences ?? [],
+    evidence: input.evidence ?? [],
+    resolutionSource: input.resolutionSource ?? [],
     heatScore: input.heatScore ?? 0,
     controversyScore: input.controversyScore ?? 0,
     isFeatured: input.isFeatured ?? false,
@@ -933,8 +1034,8 @@ export function buildEventListItem(
     lastUpdatedAt,
     homepageEligible,
     homepageRank,
-    question: input.title,
-    brief: input.brief,
+    question: displayText.question,
+    brief: displayText.brief,
     status: primaryChildMarket.status,
     categoryLabel: categoryLabels[input.category],
     statusLabel: primaryChildMarket.statusLabel,
@@ -984,7 +1085,7 @@ export function buildEventDetailView(
     ...event,
     tone: input.tone,
     evidence: input.evidence,
-    externalReference: input.sourceName && input.sourceUrl ? { label: input.sourceName, href: input.sourceUrl } : null,
+    externalReference: input.sourceName && input.sourceUrl ? { label: input.sourceName.replace(/Polymarket/gi, "外部事件库"), href: input.sourceUrl } : null,
     newsReferences: input.newsReferences ?? [],
     resolutionSource: input.resolutionSource,
     resolution: input.resolution,
@@ -1019,13 +1120,13 @@ export function buildHomeMarketSections(markets: MarketListItem[], now = new Dat
       key: "featured",
       title: "热门市场",
       description: sectionDescriptions.featured,
-      markets: sortedByFeatured.slice(0, 6),
+      markets: sortedByFeatured.slice(0, 24),
     },
     {
       key: "closing-soon",
       title: "即将锁盘",
       description: sectionDescriptions["closing-soon"],
-      markets: sortedByClosingSoon.slice(0, 6),
+      markets: sortedByClosingSoon.slice(0, 24),
     },
   ];
 
@@ -1047,12 +1148,21 @@ export function buildHomeMarketSections(markets: MarketListItem[], now = new Dat
   return sections.filter((section) => section.markets.length > 0);
 }
 
-export function buildHomeEventSections(events: EventListItem[], now = new Date()): HomeEventSection[] {
-  const homepageEvents = events.filter((event) => event.homepageEligible);
-  const featuredCandidates = homepageEvents.filter(
-    (event) => event.contentOrigin !== "external_live" || event.freshnessStatus === "fresh",
+function selectHomepageEvents(events: EventListItem[], includeLocalCurated = false): PublicHomepageEventListItem[] {
+  return events.filter(
+    (event): event is PublicHomepageEventListItem =>
+      event.homepageEligible &&
+      (event.contentOrigin === "external_live" || (includeLocalCurated && event.contentOrigin === "local_curated")),
   );
-  const sortedByFeatured = [...(featuredCandidates.length > 0 ? featuredCandidates : homepageEvents)].sort(
+}
+
+export function buildHomeEventSections(
+  events: EventListItem[],
+  now = new Date(),
+  options: { includeLocalCurated?: boolean } = {},
+): HomeEventSection[] {
+  const homepageEvents = selectHomepageEvents(events, options.includeLocalCurated);
+  const sortedByFeatured = [...homepageEvents].sort(
     (left, right) =>
       right.homepageRank - left.homepageRank ||
       right.featuredScore - left.featuredScore ||
@@ -1094,7 +1204,7 @@ export function buildHomeEventSections(events: EventListItem[], now = new Date()
   ];
 
   for (const topicKey of topicOrder) {
-    const topicEvents = sortedForSecondarySections.filter((event) => event.topicKey === topicKey).slice(0, 6);
+    const topicEvents = sortedForSecondarySections.filter((event) => event.topicKey === topicKey).slice(0, 24);
 
     if (topicEvents.length === 0) {
       continue;

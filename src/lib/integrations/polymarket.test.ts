@@ -136,6 +136,18 @@ describe("polymarket normalization", () => {
     expect(candidate.childMarkets[1]?.answerLabel).toBe("10月31日");
   });
 
+  it("localizes English external titles and child questions into Chinese display text", () => {
+    const candidate = normalizePolymarketEvent(baseEvent);
+
+    expect(candidate.event.title).toContain("美联储");
+    expect(candidate.event.title).toContain("2026");
+    expect(candidate.event.title).not.toContain("Will the Fed cut rates");
+    expect(candidate.event.brief).toContain("实时事件");
+    expect(candidate.event.sourceName).toBe("外部事件库");
+    expect(candidate.childMarkets[0]?.question).toContain("美联储");
+    expect(candidate.childMarkets[0]?.question).not.toContain("Will the Fed cut rates");
+  });
+
   it("builds stable heat and controversy scores with featured boost", () => {
     const closeRace = buildHeatScoreBreakdown({
       probabilityYes: 0.51,
@@ -239,11 +251,23 @@ describe("polymarket normalization", () => {
 
     expect(candidate.childMarkets.length).toBeGreaterThan(1);
     expect(candidate.childMarkets.map((market) => market.answerLabel)).toEqual([
-      "4月15日",
-      "4月30日",
       "5月31日",
       "6月30日",
+      "7月31日",
+      "9月30日",
     ]);
+  });
+
+  it("ships bundled fallback events with future trade windows", () => {
+    const minCloseTime = new Date("2026-05-02T00:00:00Z").getTime() + 3 * 60 * 60 * 1000;
+    const staleMarkets = POLYMARKET_FALLBACK_EVENTS.flatMap((event) =>
+      event.markets.filter((market) => {
+        const closeTime = new Date(market.endDate ?? event.endDate ?? 0).getTime();
+        return !Number.isFinite(closeTime) || closeTime <= minCloseTime;
+      }),
+    );
+
+    expect(staleMarkets).toEqual([]);
   });
 
   it("handles missing tags without crashing normalization", () => {
@@ -305,22 +329,105 @@ describe("polymarket normalization", () => {
     }
   });
 
-  it("keeps the first page when a later offset page returns 422", async () => {
+  it("uses the configured Gamma base URL and sends a timeout signal", async () => {
+    vi.stubEnv("POLYMARKET_GAMMA_BASE_URL", "https://mirror.example/events");
+    const fetchMock = vi.fn().mockResolvedValueOnce(
+      new Response(JSON.stringify([baseEvent]), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      const events = await fetchPolymarketEvents({
+        limit: 1,
+        active: true,
+        allowFallback: false,
+      });
+
+      expect(events).toHaveLength(1);
+      const [url, init] = fetchMock.mock.calls[0] ?? [];
+      expect(String(url)).toContain("https://mirror.example/events/keyset?");
+      expect((init as RequestInit).signal).toBeInstanceOf(AbortSignal);
+    } finally {
+      vi.unstubAllGlobals();
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("falls back to offset pagination when keyset pagination returns 422", async () => {
     const pageOne = Array.from({ length: 100 }, (_, index) => ({
       ...baseEvent,
-      id: `${baseEvent.id}-${index}`,
-      slug: `${baseEvent.slug}-${index}`,
+      id: `${baseEvent.id}-page-1-${index}`,
+      slug: `${baseEvent.slug}-page-1-${index}`,
     }));
-    const fetchMock = vi.fn().mockResolvedValueOnce(
-      new Response(JSON.stringify(pageOne), {
+    const pageTwo = Array.from({ length: 100 }, (_, index) => ({
+      ...baseEvent,
+      id: `${baseEvent.id}-page-2-${index}`,
+      slug: `${baseEvent.slug}-page-2-${index}`,
+    }));
+    const fetchMock = vi.fn();
+    for (let index = 0; index < 6; index += 1) {
+      fetchMock.mockResolvedValueOnce(
+        new Response(JSON.stringify({ error: "keyset not supported" }), { status: 422 }),
+      );
+    }
+    fetchMock
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(pageOne), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(pageTwo), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      );
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      const events = await fetchPolymarketEvents({
+        limit: 200,
+        active: true,
+        allowFallback: false,
+      });
+
+      expect(events).toHaveLength(200);
+      const urls = fetchMock.mock.calls.map((call) => String(call?.[0] ?? ""));
+      expect(urls.slice(0, 6).every((url) => url.includes("/events/keyset?"))).toBe(true);
+      expect(urls.some((url) => url.includes("offset=0"))).toBe(true);
+      expect(urls.some((url) => url.includes("offset=100"))).toBe(true);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("keeps offset results when both pagination strategies stop at 422", async () => {
+    const offsetPage = Array.from({ length: 100 }, (_, index) => ({
+      ...baseEvent,
+      id: `${baseEvent.id}-offset-${index}`,
+      slug: `${baseEvent.slug}-offset-${index}`,
+    }));
+    const fetchMock = vi.fn();
+    for (let index = 0; index < 6; index += 1) {
+      fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ error: "keyset not supported" }), { status: 422 }));
+    }
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify(offsetPage), {
         status: 200,
         headers: { "content-type": "application/json" },
       }),
     );
     for (let index = 0; index < 6; index += 1) {
-      fetchMock.mockResolvedValueOnce(
-        new Response(JSON.stringify({ error: "offset not supported" }), { status: 422 }),
-      );
+      fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ error: "offset not supported" }), { status: 422 }));
+    }
+    for (let index = 0; index < 6; index += 1) {
+      fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ error: "keyset not supported" }), { status: 422 }));
     }
 
     vi.stubGlobal("fetch", fetchMock);
@@ -333,9 +440,65 @@ describe("polymarket normalization", () => {
       });
 
       expect(events).toHaveLength(100);
-      expect(fetchMock).toHaveBeenCalledTimes(7);
-      const secondPageUrls = fetchMock.mock.calls.slice(1).map((call) => String(call?.[0] ?? ""));
-      expect(secondPageUrls.every((url) => url.includes("offset=100"))).toBe(true);
+      const urls = fetchMock.mock.calls.map((call) => String(call?.[0] ?? ""));
+      expect(urls.some((url) => url.includes("offset=100"))).toBe(true);
+      expect(urls.filter((url) => url.includes("/events/keyset?")).length).toBe(12);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("fetches multiple Gamma keyset pages up to the requested catalog limit", async () => {
+    const keysetPageOne = Array.from({ length: 100 }, (_, index) => ({
+      ...baseEvent,
+      id: `${baseEvent.id}-keyset-1-${index}`,
+      slug: `${baseEvent.slug}-keyset-1-${index}`,
+    }));
+    const keysetPageTwo = Array.from({ length: 100 }, (_, index) => ({
+      ...baseEvent,
+      id: `${baseEvent.id}-keyset-2-${index}`,
+      slug: `${baseEvent.slug}-keyset-2-${index}`,
+    }));
+    const keysetPageThree = Array.from({ length: 100 }, (_, index) => ({
+      ...baseEvent,
+      id: `${baseEvent.id}-keyset-3-${index}`,
+      slug: `${baseEvent.slug}-keyset-3-${index}`,
+    }));
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ events: keysetPageOne, next_cursor: "cursor-2" }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ events: keysetPageTwo, next_cursor: "cursor-3" }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ events: keysetPageThree, next_cursor: null }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      );
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      const events = await fetchPolymarketEvents({
+        limit: 300,
+        active: true,
+        allowFallback: false,
+      });
+
+      expect(events).toHaveLength(300);
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+      expect(String(fetchMock.mock.calls[0]?.[0] ?? "")).toContain("/events/keyset?");
+      expect(String(fetchMock.mock.calls[1]?.[0] ?? "")).toContain("after_cursor=cursor-2");
+      expect(String(fetchMock.mock.calls[2]?.[0] ?? "")).toContain("after_cursor=cursor-3");
     } finally {
       vi.unstubAllGlobals();
     }

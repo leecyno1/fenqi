@@ -1,4 +1,4 @@
-import { and, count, desc, eq, gte, inArray, sql } from "drizzle-orm";
+import { and, count, desc, eq, gte, ilike, inArray, or, sql } from "drizzle-orm";
 
 import { db } from "@/db/client";
 import { HOMEPAGE_EXTERNAL_CATALOG_MAX_AGE_MINUTES } from "@/config/content-governance";
@@ -108,6 +108,7 @@ type EventMarketRow = {
   eventNewsImageUrl: string | null;
   eventSourceName: string | null;
   eventSourceUrl: string | null;
+  eventExternalEventId: string | null;
   eventNewsImageSource: string | null;
   eventNewsReferences: unknown;
   eventExternalSource: string | null;
@@ -185,7 +186,11 @@ function buildEventItemsFromRows(rows: EventMarketRow[]) {
             newsImageUrl: row.eventNewsImageUrl,
             sourceName: row.eventSourceName,
             sourceUrl: row.eventSourceUrl,
+            externalEventId: row.eventExternalEventId,
             newsImageSource: row.eventNewsImageSource,
+            newsReferences: asNewsReferences(row.eventNewsReferences),
+            evidence: asEvidence(row.eventEvidence),
+            resolutionSource: asResolutionSources(row.eventResolutionSources),
             externalSource: row.eventExternalSource,
             heatScore: row.eventHeatScore,
             controversyScore: row.eventControversyScore,
@@ -321,6 +326,7 @@ async function getEventMarketRowsByFilter(where?: ReturnType<typeof and>) {
       eventNewsImageUrl: marketEvents.newsImageUrl,
       eventSourceName: marketEvents.sourceName,
       eventSourceUrl: marketEvents.sourceUrl,
+      eventExternalEventId: marketEvents.externalEventId,
       eventNewsImageSource: marketEvents.newsImageSource,
       eventNewsReferences: marketEvents.newsReferences,
       eventExternalSource: marketEvents.externalSource,
@@ -385,17 +391,101 @@ export async function getEventListItems(): Promise<EventListItem[]> {
   );
 }
 
+function sortEventsForDiscovery(events: EventListItem[]) {
+  return [...events].sort(
+    (left, right) =>
+      right.homepageRank - left.homepageRank ||
+      right.featuredScore - left.featuredScore ||
+      right.totalVolumePoints - left.totalVolumePoints ||
+      left.closesAt.getTime() - right.closesAt.getTime(),
+  );
+}
+
+function visiblePublicEvent(event: EventListItem) {
+  return event.contentOrigin !== "seed_demo" && event.contentOrigin !== "backoffice_candidate";
+}
+
+export async function searchEventListItems(query: string, limit = 120): Promise<EventListItem[]> {
+  const normalizedQuery = query.trim();
+  const where = normalizedQuery
+    ? and(
+        inArray(markets.status, ["live", "review", "locked", "resolved", "voided"]),
+        or(
+          ilike(marketEvents.title, `%${normalizedQuery}%`),
+          ilike(marketEvents.brief, `%${normalizedQuery}%`),
+          ilike(markets.question, `%${normalizedQuery}%`),
+          ilike(markets.brief, `%${normalizedQuery}%`),
+        ),
+      )
+    : inArray(markets.status, ["live", "review", "locked", "resolved", "voided"]);
+  const rows = await getEventMarketRowsByFilter(where);
+  const events = buildEventItemsFromRows(rows).map(({ event, childMarkets }) =>
+    buildEventListItem({
+      ...event,
+      childMarkets,
+    }),
+  );
+
+  return sortEventsForDiscovery(events.filter(visiblePublicEvent)).slice(0, limit);
+}
+
+export async function getTopicEventListItems(topicKey: EventListItem["topicKey"], limit = 72): Promise<EventListItem[]> {
+  const events = await getEventListItems();
+  return sortEventsForDiscovery(
+    events.filter((event) => visiblePublicEvent(event) && event.topicKey === topicKey),
+  ).slice(0, limit);
+}
+
+export async function getActivityEventListItems(limit = 36): Promise<EventListItem[]> {
+  const events = await getEventListItems();
+  return [...events]
+    .filter(visiblePublicEvent)
+    .sort((left, right) => {
+      const leftUpdated = left.lastUpdatedAt?.getTime() ?? left.createdAt.getTime();
+      const rightUpdated = right.lastUpdatedAt?.getTime() ?? right.createdAt.getTime();
+      return rightUpdated - leftUpdated || right.totalVolumePoints - left.totalVolumePoints;
+    })
+    .slice(0, limit);
+}
+
+export async function getAdminCandidateEventListItems(limit = 80): Promise<EventListItem[]> {
+  const rows = await getEventMarketRowsByFilter(
+    and(
+      inArray(markets.status, ["review", "draft"]),
+      inArray(marketEvents.externalSource, ["news_report"]),
+    ),
+  );
+  const events = buildEventItemsFromRows(rows).map(({ event, childMarkets }) =>
+    buildEventListItem({
+      ...event,
+      childMarkets,
+    }),
+  );
+
+  return sortEventsForDiscovery(events).slice(0, limit);
+}
+
 function filterEventsForHomepage(
   events: EventListItem[],
 ) {
-  return events.filter((event) => event.homepageEligible);
+  return events.filter(
+    (event): event is HomeEventSection["markets"][number] =>
+      event.homepageEligible && event.contentOrigin !== "backoffice_candidate",
+  );
+}
+
+function canUseCuratedHomeFallback() {
+  return process.env.APP_ALLOW_CURATED_HOME_FALLBACK === "true";
 }
 
 export async function getHomeEventSections(): Promise<HomeEventSection[]> {
   const events = await getEventListItems();
-  const homepageEvents = filterEventsForHomepage(events);
+  const includeLocalCurated = canUseCuratedHomeFallback();
+  const homepageEvents = filterEventsForHomepage(events).filter((event) =>
+    event.contentOrigin === "external_live" || (includeLocalCurated && event.contentOrigin === "local_curated")
+  );
 
-  return buildHomeEventSections(homepageEvents);
+  return buildHomeEventSections(homepageEvents, new Date(), { includeLocalCurated });
 }
 
 export async function getHomepageGovernanceSummary(now = new Date()) {
@@ -724,12 +814,22 @@ export async function getLeaderboardEntries(): Promise<LeaderboardEntryView[]> {
 
   return rows.map((row, index) => ({
     rank: index + 1,
-    name: row.name,
+    name: formatPublicLeaderboardName(row.name, index),
     title: index === 0 ? "当前净值领先" : "活跃参与者",
     score: row.score,
     hitRate: 0.5,
     monthlyGain: row.lifetimePnL,
   }));
+}
+
+export function formatPublicLeaderboardName(name: string, index = 0) {
+  const trimmed = name.trim();
+
+  if (/\d{7,}/.test(trimmed) || /\b\d{3,}[-\s]?\d{3,}/.test(trimmed)) {
+    return `匿名用户 ${index + 1}`;
+  }
+
+  return trimmed || `匿名用户 ${index + 1}`;
 }
 
 export async function getAdminMarketListItems(): Promise<AdminMarketListItem[]> {

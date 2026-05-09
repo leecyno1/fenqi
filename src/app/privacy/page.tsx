@@ -1,4 +1,5 @@
 import { SiteShell } from "@/components/site-shell";
+import { DocumentScaffold, ShellPanel } from "@/components/shell-panel";
 import { getPublicSiteConfig } from "@/lib/env";
 
 const sections = [
@@ -33,26 +34,46 @@ export default function PrivacyPage() {
 
   return (
     <SiteShell currentPath="/privacy" hideHero>
-      <section className="space-y-4 rounded-[1.6rem] border border-[var(--color-line)] bg-white p-5 shadow-[0_14px_30px_rgba(11,31,77,0.08)] md:p-6">
-        <div className="space-y-2">
-          <h1 className="font-display text-[1.6rem] leading-none tracking-tight text-[var(--color-ink)]">隐私政策</h1>
-          <p className="text-[0.82rem] leading-6 text-[color:var(--color-muted-ink)]">
-            生效日期：2026-04-07。联系邮箱：{siteConfig.supportEmail ?? "待配置"}。
-          </p>
-        </div>
-        <div className="grid gap-3">
-          {sections.map((section) => (
-            <div key={section.title} className="rounded-[1.1rem] border border-[var(--color-line)] bg-[var(--color-paper-soft)] p-4">
-              <h2 className="text-[1rem] font-semibold text-[var(--color-ink)]">{section.title}</h2>
-              <ul className="mt-2 space-y-1.5 text-[0.84rem] leading-6 text-[color:var(--color-muted-ink)]">
-                {section.items.map((item) => (
-                  <li key={item}>{item}</li>
-                ))}
-              </ul>
+      <DocumentScaffold
+        title="隐私政策"
+        eyebrow="Privacy"
+        description="本页说明平台在账户登录、积分记账、事件结算与安全审计过程中会处理哪些数据，以及这些数据被使用到什么范围。"
+        meta={[
+          { label: "生效日期", value: "2026-04-07" },
+          { label: "联系邮箱", value: siteConfig.supportEmail ?? "待配置" },
+          { label: "适用范围", value: "站点与账户服务" },
+        ]}
+        sidebar={
+          <ShellPanel className="p-4" tone="soft">
+            <p className="font-mono text-[0.62rem] uppercase tracking-[0.28em] text-[var(--color-accent)]">摘要</p>
+            <div className="mt-3 space-y-2">
+              {[
+                ["收集原则", "最小必要"],
+                ["使用场景", "登录 / 记账 / 安全"],
+                ["对外提供", "法律或监管要求除外"],
+              ].map(([label, value]) => (
+                <div key={label} className="flex items-center justify-between rounded-[0.95rem] border border-[var(--color-line)] bg-white px-3 py-2.5">
+                  <span className="text-[0.76rem] text-[color:var(--color-muted-ink)]">{label}</span>
+                  <span className="text-[0.78rem] font-medium text-[var(--color-ink)]">{value}</span>
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
-      </section>
+          </ShellPanel>
+        }
+      >
+        {sections.map((section) => (
+          <ShellPanel key={section.title} className="p-4 md:p-5">
+            <h2 className="text-[1rem] font-semibold text-[var(--color-ink)]">{section.title}</h2>
+            <ul className="mt-3 space-y-2 text-[0.84rem] leading-6 text-[color:var(--color-muted-ink)]">
+              {section.items.map((item) => (
+                <li key={item} className="rounded-[1rem] border border-[var(--color-line)] bg-[var(--color-paper-soft)] px-4 py-3">
+                  {item}
+                </li>
+              ))}
+            </ul>
+          </ShellPanel>
+        ))}
+      </DocumentScaffold>
     </SiteShell>
   );
 }

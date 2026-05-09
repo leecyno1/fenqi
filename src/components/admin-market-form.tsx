@@ -133,7 +133,7 @@ export function AdminMarketForm({
             value={form.sourceName}
             onChange={(event) => updateField("sourceName", event.target.value)}
             className="rounded-[1rem] border border-white/10 bg-white/6 px-4 py-2.5 text-white outline-none transition focus:border-white/25"
-            placeholder="Polymarket / Reuters"
+            placeholder="外部事件库 / 新闻来源"
           />
         </label>
 

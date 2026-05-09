@@ -10,17 +10,58 @@
   --font-mono:
     "SFMono-Regular", "JetBrains Mono", "IBM Plex Mono", "Menlo",
     "Consolas", monospace;
-  --color-bg: #f6f8fc;
-  --color-paper: #ffffff;
-  --color-paper-soft: rgba(29, 78, 216, 0.08);
-  --color-ink: #0f172a;
-  --color-muted-ink: #334155;
-  --color-accent: #1d4ed8;
-  --color-accent-deep: #0b1f4d;
-  --color-secondary: #c62828;
-  --color-secondary-deep: #8e1b1b;
+  --color-bg: #8f9bb2;
+  --color-bg-rgb: 143 155 178;
+  --color-paper: #f5f6f8;
+  --color-paper-soft: rgba(221, 226, 232, 0.7);
+  --color-shell: rgba(245, 246, 248, 0.92);
+  --color-surface: rgba(255, 255, 255, 0.76);
+  --color-surface-soft: rgba(255, 255, 255, 0.58);
+  --color-surface-raised: rgba(255, 255, 255, 0.9);
+  --color-panel-muted: rgba(245, 246, 248, 0.7);
+  --color-ink: #20283a;
+  --color-muted-ink: #697280;
+  --color-accent: #e64c2e;
+  --color-accent-deep: #232d43;
+  --color-secondary: #6c9fcc;
+  --color-secondary-deep: #477ba8;
   --color-gold: #f4b400;
-  --color-line: rgba(11, 31, 77, 0.16);
+  --color-line: rgba(32, 40, 58, 0.1);
+  --color-glass-line: rgba(255, 255, 255, 0.7);
+  --color-chip: rgba(255, 255, 255, 0.7);
+  --color-toggle-track: rgba(32, 40, 58, 0.14);
+  --color-toggle-thumb: #ffffff;
+  --shadow-soft: 0 24px 70px rgba(31, 39, 55, 0.18);
+  --shadow-card: 0 16px 34px rgba(31, 39, 55, 0.08);
+  --shadow-button: 0 10px 20px rgba(31, 39, 55, 0.08);
+  --radius-shell: 2rem;
+}
+
+:root[data-theme="dark"] {
+  --color-bg: #3b3b4b;
+  --color-bg-rgb: 59 59 75;
+  --color-paper: #111219;
+  --color-paper-soft: rgba(22, 23, 31, 0.74);
+  --color-shell: rgba(16, 17, 24, 0.94);
+  --color-surface: rgba(29, 30, 39, 0.82);
+  --color-surface-soft: rgba(24, 25, 34, 0.64);
+  --color-surface-raised: rgba(32, 33, 44, 0.92);
+  --color-panel-muted: rgba(18, 19, 27, 0.78);
+  --color-ink: #f6f3ef;
+  --color-muted-ink: #a8a7b5;
+  --color-accent: #ff6bd5;
+  --color-accent-deep: #6d63ff;
+  --color-secondary: #7fe7b5;
+  --color-secondary-deep: #50d693;
+  --color-gold: #ffe56b;
+  --color-line: rgba(255, 255, 255, 0.09);
+  --color-glass-line: rgba(255, 255, 255, 0.1);
+  --color-chip: rgba(255, 255, 255, 0.07);
+  --color-toggle-track: rgba(109, 99, 255, 0.3);
+  --color-toggle-thumb: #f9f7ff;
+  --shadow-soft: 0 30px 90px rgba(0, 0, 0, 0.5);
+  --shadow-card: 0 18px 42px rgba(0, 0, 0, 0.28);
+  --shadow-button: 0 12px 24px rgba(0, 0, 0, 0.28);
 }
 
 @theme inline {
@@ -45,14 +86,32 @@ html {
 
 body {
   min-height: 100vh;
-  background: var(--color-bg);
+  background:
+    radial-gradient(circle at 12% 10%, rgba(255, 255, 255, 0.2), transparent 24rem),
+    radial-gradient(circle at 84% 78%, rgba(109, 99, 255, 0.18), transparent 28rem),
+    radial-gradient(circle at 52% 16%, rgba(255, 107, 213, 0.1), transparent 26rem),
+    var(--color-bg);
   color: var(--color-ink);
   font-family: var(--font-sans), sans-serif;
+  transition: background-color 220ms ease, color 220ms ease;
 }
 
 a {
   color: inherit;
   text-decoration: none;
+}
+
+:where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: 3px solid rgba(244, 180, 0, 0.92);
+  outline-offset: 3px;
+}
+
+:where(input, select, textarea) {
+  min-height: 2.75rem;
+}
+
+:where(button, input, select, textarea) {
+  font: inherit;
 }
 
 ::selection {
@@ -80,4 +139,30 @@ a {
 
 .ticker-track:hover {
   animation-play-state: paused;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+  }
+
+  .ticker-track {
+    animation: none;
+    transform: translateX(0);
+  }
+}
+
+:root[data-theme="dark"] body::before {
+  pointer-events: none;
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background:
+    linear-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+  background-size: 44px 44px;
+  mask-image: radial-gradient(circle at 50% 28%, black, transparent 72%);
 }

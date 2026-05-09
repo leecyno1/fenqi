@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { resolveMarketImageUrl } from "./market-visuals";
 
 describe("resolveMarketImageUrl", () => {
-  it("prefers manual override, then cached news image, then live news image", () => {
+  it("prefers manual override, cached news image, live news image, then external image", () => {
     expect(
       resolveMarketImageUrl("fed-cut-september-2026", "finance", {
         manualImage: "https://cdn.example/manual.jpg",
@@ -38,7 +38,7 @@ describe("resolveMarketImageUrl", () => {
         newsImageUrl: null,
         externalImageUrl: "https://polymarket-upload.example/fed.png",
       }),
-    ).toBe("/event-photo/finance.jpg");
+    ).toBe("https://polymarket-upload.example/fed.png");
   });
 
   it("ignores legacy svg icon paths and falls back to real photo assets", () => {

@@ -8,6 +8,7 @@ import {
   buildHomeFeedSectionToggleA11yLabel,
   buildHomeFeedSectionToggleLabel,
   canExpandHomeSection,
+  excludeMarketsFromHomeSections,
   filterAndSortHomeSections,
   getVisibleHomeSectionMarkets,
   parseHomeFeedSearchParams,
@@ -219,8 +220,8 @@ describe("home feed controls", () => {
     const sportsSection = sections.find((section) => section.key === "sports");
 
     expect(sportsSection).toBeDefined();
-    expect(canExpandHomeSection(sportsSection!)).toBe(true);
-    expect(getVisibleHomeSectionMarkets(sportsSection!, false)).toHaveLength(4);
+    expect(canExpandHomeSection(sportsSection!)).toBe(false);
+    expect(getVisibleHomeSectionMarkets(sportsSection!, false)).toHaveLength(5);
     expect(getVisibleHomeSectionMarkets(sportsSection!, true)).toHaveLength(5);
   });
 
@@ -247,13 +248,14 @@ describe("home feed controls", () => {
     const now = new Date("2026-04-08T00:00:00.000Z");
     const cultureA = buildEventListItem({
       id: "evt_culture_a",
-      slug: "culture-a",
+      slug: "culture-singer-2026-launch-lineup",
       title: "Culture A",
       brief: "Culture A",
       category: "current_affairs",
+      externalSource: "polymarket",
       childMarkets: [{
         id: "mkt_culture_a",
-        slug: "culture-a",
+        slug: "culture-singer-2026-launch-lineup-primary",
         question: "Culture A",
         answerLabel: "主市场",
         answerOrder: 1,
@@ -266,17 +268,22 @@ describe("home feed controls", () => {
         noShares: 45,
         volumePoints: 9000,
         activeTraders: 400,
+        externalYesProbabilityBps: 5500,
+        externalNoProbabilityBps: 4500,
+        priceAnchorMode: "external",
+        externalPriceUpdatedAt: new Date("2026-04-07T23:55:00.000Z"),
       }],
     }, now);
     const cultureB = buildEventListItem({
       id: "evt_culture_b",
-      slug: "culture-b",
+      slug: "culture-ride-the-wind-2026-comeback",
       title: "Culture B",
       brief: "Culture B",
       category: "current_affairs",
+      externalSource: "polymarket",
       childMarkets: [{
         id: "mkt_culture_b",
-        slug: "culture-b",
+        slug: "culture-ride-the-wind-2026-comeback-primary",
         question: "Culture B",
         answerLabel: "主市场",
         answerOrder: 1,
@@ -289,17 +296,22 @@ describe("home feed controls", () => {
         noShares: 44,
         volumePoints: 8500,
         activeTraders: 380,
+        externalYesProbabilityBps: 5600,
+        externalNoProbabilityBps: 4400,
+        priceAnchorMode: "external",
+        externalPriceUpdatedAt: new Date("2026-04-07T23:55:00.000Z"),
       }],
     }, now);
     const world = buildEventListItem({
       id: "evt_world",
-      slug: "world-a",
+      slug: "world-ukraine-ceasefire-before-july-2026",
       title: "World A",
       brief: "World A",
       category: "current_affairs",
+      externalSource: "polymarket",
       childMarkets: [{
         id: "mkt_world",
-        slug: "world-a",
+        slug: "world-ukraine-ceasefire-before-july-2026-primary",
         question: "World A",
         answerLabel: "主市场",
         answerOrder: 1,
@@ -312,17 +324,22 @@ describe("home feed controls", () => {
         noShares: 40,
         volumePoints: 4000,
         activeTraders: 210,
+        externalYesProbabilityBps: 6000,
+        externalNoProbabilityBps: 4000,
+        priceAnchorMode: "external",
+        externalPriceUpdatedAt: new Date("2026-04-07T23:55:00.000Z"),
       }],
     }, now);
     const finance = buildEventListItem({
       id: "evt_finance",
-      slug: "finance-a",
+      slug: "finance-us10y-above-5-before-june-2026",
       title: "Finance A",
       brief: "Finance A",
       category: "finance",
+      externalSource: "polymarket",
       childMarkets: [{
         id: "mkt_finance",
-        slug: "finance-a",
+        slug: "finance-us10y-above-5-before-june-2026-primary",
         question: "Finance A",
         answerLabel: "主市场",
         answerOrder: 1,
@@ -335,25 +352,42 @@ describe("home feed controls", () => {
         noShares: 42,
         volumePoints: 3800,
         activeTraders: 205,
+        externalYesProbabilityBps: 5800,
+        externalNoProbabilityBps: 4200,
+        priceAnchorMode: "external",
+        externalPriceUpdatedAt: new Date("2026-04-07T23:55:00.000Z"),
       }],
     }, now);
 
-    const selected = selectHomeFeaturedMarkets(
-      [{
-        key: "featured",
-        title: "热门事件",
-        description: "test",
-        markets: [cultureA, cultureB, world, finance],
-      }],
-      [cultureA, cultureB, world, finance],
-      3,
+    const sections = buildHomeEventSections([cultureA, cultureB, world, finance], now);
+    const homepageEvents: (typeof sections)[number]["markets"][number][] = Array.from(
+      new Map(
+        sections.flatMap((section) => section.markets).map((event) => [event.id, event]),
+      ).values(),
     );
+
+    const selected = selectHomeFeaturedMarkets(sections, homepageEvents, 3);
 
     expect(selected).toHaveLength(3);
     expect(selected.map((item) => item.topicKey)).toEqual(["culture", "world", "finance"]);
+
+    const feedSections = excludeMarketsFromHomeSections(
+      sections,
+      new Set(selected.map((item) => item.id)),
+      ["featured"],
+    );
+    const filteredFinance = filterAndSortHomeSections(feedSections, {
+      topic: "finance",
+      status: "all",
+      sort: "featured",
+      query: "",
+    });
+
+    expect(filteredFinance).toHaveLength(1);
+    expect(filteredFinance[0]?.markets.map((item) => item.id)).toEqual(["evt_finance"]);
   });
 
-  it("keeps stale external events out of the featured rail when fresh events are available", () => {
+  it("keeps stale external events visible but ranked behind fresh events", () => {
     const now = new Date("2026-04-08T12:00:00.000Z");
     const freshExternal = buildEventListItem(
       {
@@ -453,12 +487,13 @@ describe("home feed controls", () => {
 
     expect(featured?.markets.map((market) => market.slug)).toEqual([
       "fresh-external-event",
-      "tech-openai-device-launch-2026",
+      "stale-external-event",
     ]);
-    expect(finance?.markets.map((market) => market.slug)).toContain("stale-external-event");
+    expect(finance?.markets.map((market) => market.slug) ?? []).toContain("stale-external-event");
+    expect(featured?.markets.map((market) => market.slug) ?? []).not.toContain("tech-openai-device-launch-2026");
   });
 
-  it("fills head cards from stale external events only after fresh candidates are exhausted", () => {
+  it("keeps stale external events behind fresh head cards", () => {
     const now = new Date("2026-04-08T12:00:00.000Z");
     const fresh = buildEventListItem(
       {
@@ -525,18 +560,20 @@ describe("home feed controls", () => {
       },
       now,
     );
+    const sections = buildHomeEventSections([fresh, stale], now);
+    const homepageEvents: (typeof sections)[number]["markets"][number][] = Array.from(
+      new Map(
+        sections.flatMap((section) => section.markets).map((event) => [event.id, event]),
+      ).values(),
+    );
 
     const selected = selectHomeFeaturedMarkets(
-      [{
-        key: "featured",
-        title: "热门事件",
-        description: "test",
-        markets: [stale],
-      }],
-      [fresh, stale],
+      sections,
+      homepageEvents,
       2,
     );
 
+    expect(stale.homepageEligible).toBe(true);
     expect(selected.map((item) => item.slug)).toEqual(["fresh-event", "stale-event"]);
   });
 
@@ -730,7 +767,7 @@ describe("home feed controls", () => {
     const sportsSection = sections.find((section) => section.key === "sports");
 
     expect(sportsSection).toBeDefined();
-    expect(buildHomeFeedSectionToggleLabel(sportsSection!, false)).toBe("查看更多 +1");
+    expect(buildHomeFeedSectionToggleLabel(sportsSection!, false)).toBe("查看更多 +0");
     expect(buildHomeFeedSectionToggleLabel(sportsSection!, true)).toBe("收起");
     expect(buildHomeFeedSectionToggleA11yLabel(sportsSection!, false)).toBe("展开 Sports 分组");
     expect(buildHomeFeedSectionToggleA11yLabel(sportsSection!, true)).toBe("收起 Sports 分组");

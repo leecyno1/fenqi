@@ -4,7 +4,9 @@ import { canAccessAdmin } from "@/lib/auth/guards";
 import { getOptionalSession } from "@/lib/auth/session";
 import { parseAdminResolutionInput } from "@/lib/admin/market-resolution";
 import { resolveMarket } from "@/lib/admin/resolve-market";
+import { isInvalidJsonBodyError, readJsonBody } from "@/lib/http-json";
 import { applyRateLimit } from "@/lib/rate-limit";
+import { enforceTrustedWriteOrigin } from "@/lib/request-integrity";
 
 export async function POST(
   request: Request,
@@ -18,6 +20,11 @@ export async function POST(
 
   if (!canAccessAdmin(session)) {
     return NextResponse.json({ error: "Admin access required." }, { status: 403 });
+  }
+
+  const untrustedOrigin = enforceTrustedWriteOrigin(request);
+  if (untrustedOrigin) {
+    return untrustedOrigin;
   }
 
   const rateLimited = await applyRateLimit({
@@ -35,7 +42,7 @@ export async function POST(
   const { id } = await params;
 
   try {
-    const payload = parseAdminResolutionInput(await request.json());
+    const payload = parseAdminResolutionInput(await readJsonBody(request));
     const result = await resolveMarket({
       marketId: id,
       resolvedBy: session.userId,
@@ -44,6 +51,10 @@ export async function POST(
 
     return NextResponse.json(result);
   } catch (error) {
+    if (isInvalidJsonBodyError(error)) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
+
     const message = error instanceof Error ? error.message : "Failed to resolve market.";
     const status =
       /not found/i.test(message) ? 404 : /already settled|closed before settlement|published markets/i.test(message) ? 409 : 400;

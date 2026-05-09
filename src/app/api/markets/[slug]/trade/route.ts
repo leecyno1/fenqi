@@ -4,10 +4,16 @@ import { eq } from "drizzle-orm";
 import { auth } from "@/lib/auth";
 import { canAccessPortfolio } from "@/lib/auth/guards";
 import type { TradeAction } from "@/lib/data/queries";
+import { isInvalidJsonBodyError, readJsonBody } from "@/lib/http-json";
 import { applyRateLimit } from "@/lib/rate-limit";
+import { enforceTrustedWriteOrigin } from "@/lib/request-integrity";
 import { executeTrade } from "@/lib/trading/execute-trade";
 import { db } from "@/db/client";
 import { markets, users } from "@/db/schema";
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
 
 export async function POST(
   request: NextRequest,
@@ -45,6 +51,11 @@ export async function POST(
       );
     }
 
+    const untrustedOrigin = enforceTrustedWriteOrigin(request);
+    if (untrustedOrigin) {
+      return untrustedOrigin;
+    }
+
     const rateLimited = await applyRateLimit({
       request,
       scope: "trade",
@@ -58,14 +69,16 @@ export async function POST(
     }
 
     const { slug } = await params;
-    const body = await request.json();
+    const body = await readJsonBody(request);
+
+    if (!isRecord(body)) {
+      return NextResponse.json({ error: "Invalid trade payload." }, { status: 400 });
+    }
 
     // Validate request body
-    const { action, side, shareCount } = body as {
-      action?: TradeAction;
-      side?: "YES" | "NO";
-      shareCount?: number;
-    };
+    const action = body.action as TradeAction | undefined;
+    const side = body.side as "YES" | "NO" | undefined;
+    const shareCount = body.shareCount;
 
     if (!action || (action !== "buy" && action !== "sell")) {
       return NextResponse.json(
@@ -81,7 +94,7 @@ export async function POST(
       );
     }
 
-    if (!shareCount || typeof shareCount !== "number" || shareCount <= 0) {
+    if (typeof shareCount !== "number" || !Number.isFinite(shareCount) || shareCount <= 0) {
       return NextResponse.json(
         { error: "Invalid shareCount. Must be a positive number" },
         { status: 400 },
@@ -107,7 +120,13 @@ export async function POST(
     });
 
     if (!result.success) {
-      return NextResponse.json({ error: result.error }, { status: 400 });
+      const status =
+        /not found/i.test(result.error) ? 404 :
+        /unauthorized/i.test(result.error) ? 401 :
+        /not open|closed/i.test(result.error) ? 409 :
+        /insufficient/i.test(result.error) ? 409 :
+        400;
+      return NextResponse.json({ error: result.error }, { status });
     }
 
     return NextResponse.json({
@@ -116,7 +135,11 @@ export async function POST(
       wallet: result.wallet,
       position: result.position,
     });
-  } catch {
+  } catch (error) {
+    if (isInvalidJsonBodyError(error)) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
+
     return NextResponse.json(
       { error: "Failed to execute trade" },
       { status: 500 },

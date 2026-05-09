@@ -1,60 +1,74 @@
 import { describe, expect, it } from "vitest";
 
-import { evaluateJobFreshness } from "./jobs";
+import { evaluateJobFreshness } from "@/lib/jobs";
 
-describe("job freshness", () => {
-  it("marks missing jobs as stale", () => {
-    const report = evaluateJobFreshness([], new Date("2026-04-07T12:00:00.000Z"));
-
-    expect(report.ok).toBe(false);
-    expect(report.jobs.every((job) => job.status === "missing")).toBe(true);
-  });
-
-  it("marks outdated jobs as stale when the last success is too old", () => {
+describe("evaluateJobFreshness", () => {
+  it("only blocks readiness on required jobs", () => {
+    const now = new Date("2026-05-02T08:00:00.000Z");
+    const finishedAt = new Date("2026-05-02T07:30:00.000Z");
     const report = evaluateJobFreshness(
       [
         {
-          jobName: "sync-polymarket-prices",
+          jobName: "record-snapshots",
           status: "success",
-          finishedAt: new Date("2026-04-07T11:00:00.000Z"),
+          finishedAt,
         },
       ],
-      new Date("2026-04-07T12:00:00.000Z"),
+      now,
+      ["record-snapshots"],
     );
 
-    const priceJob = report.jobs.find((job) => job.jobName === "sync-polymarket-prices");
-    expect(priceJob?.status).toBe("stale");
-    expect(report.ok).toBe(false);
+    expect(report.ok).toBe(true);
+    expect(report.jobs.find((job) => job.jobName === "record-snapshots")?.status).toBe("fresh");
+    expect(report.jobs.find((job) => job.jobName === "sync-polymarket-catalog")?.status).toBe("missing");
   });
 
-  it("accepts fresh successful jobs", () => {
+  it("keeps failing when a required job is stale or missing", () => {
+    const now = new Date("2026-05-02T08:00:00.000Z");
+    const finishedAt = new Date("2026-05-02T05:59:00.000Z");
+    const report = evaluateJobFreshness(
+      [
+        {
+          jobName: "record-snapshots",
+          status: "success",
+          finishedAt,
+        },
+      ],
+      now,
+      ["record-snapshots"],
+    );
+
+    expect(report.ok).toBe(false);
+    expect(report.jobs.find((job) => job.jobName === "record-snapshots")?.status).toBe("stale");
+  });
+
+  it("treats Polymarket catalog and price sync using production cadence thresholds", () => {
+    const now = new Date("2026-05-02T08:00:00.000Z");
     const report = evaluateJobFreshness(
       [
         {
           jobName: "sync-polymarket-catalog",
           status: "success",
-          finishedAt: new Date("2026-04-07T11:30:00.000Z"),
-        },
-        {
-          jobName: "enrich-news",
-          status: "success",
-          finishedAt: new Date("2026-04-07T10:30:00.000Z"),
+          finishedAt: new Date("2026-05-02T06:29:00.000Z"),
         },
         {
           jobName: "sync-polymarket-prices",
           status: "success",
-          finishedAt: new Date("2026-04-07T11:50:00.000Z"),
-        },
-        {
-          jobName: "record-snapshots",
-          status: "success",
-          finishedAt: new Date("2026-04-07T11:20:00.000Z"),
+          finishedAt: new Date("2026-05-02T07:44:00.000Z"),
         },
       ],
-      new Date("2026-04-07T12:00:00.000Z"),
+      now,
+      ["sync-polymarket-catalog", "sync-polymarket-prices"],
     );
 
-    expect(report.ok).toBe(true);
-    expect(report.jobs.every((job) => job.status === "fresh")).toBe(true);
+    expect(report.ok).toBe(false);
+    expect(report.jobs.find((job) => job.jobName === "sync-polymarket-catalog")).toMatchObject({
+      status: "stale",
+      maxAgeMinutes: 90,
+    });
+    expect(report.jobs.find((job) => job.jobName === "sync-polymarket-prices")).toMatchObject({
+      status: "stale",
+      maxAgeMinutes: 15,
+    });
   });
 });

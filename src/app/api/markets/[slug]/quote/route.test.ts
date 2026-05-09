@@ -47,4 +47,15 @@ describe("GET /api/markets/[slug]/quote", () => {
 
     expect(response.status).toBe(400);
   });
+
+  it("rejects non-finite share counts", async () => {
+    const { GET } = await import("./route");
+    const response = await GET(
+      new NextRequest("http://localhost:3000/api/markets/test/quote?action=buy&side=YES&shareCount=Infinity"),
+      { params: Promise.resolve({ slug: "test" }) },
+    );
+
+    expect(response.status).toBe(400);
+    expect(getQuoteForMarketSlug).not.toHaveBeenCalled();
+  });
 });

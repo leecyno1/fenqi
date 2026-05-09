@@ -22,8 +22,10 @@ describe("reports-generated candidates", () => {
   it("builds normalized candidates from reports news and llm output", async () => {
     const originalKey = process.env.REPORTS_LLM_API_KEY;
     const originalAllowlist = process.env.REPORTS_PLATFORM_ALLOWLIST;
+    const originalBaseUrl = process.env.REPORTS_BASE_URL;
     process.env.REPORTS_LLM_API_KEY = "unit-test-key";
     process.env.REPORTS_PLATFORM_ALLOWLIST = "weibo";
+    process.env.REPORTS_BASE_URL = "https://reports.example.com";
 
     try {
       const candidates = await getReportsGeneratedCandidates({
@@ -85,11 +87,27 @@ describe("reports-generated candidates", () => {
       expect(candidates[0]?.probability.yes).toBeCloseTo(0.66, 5);
       expect(candidates[0]?.sourceUrl).toBe("https://example.com/news/fed");
       expect(candidates[0]?.externalSlug.startsWith("news-")).toBe(true);
-      expect(candidates[0]?.status).toBe("live");
+      expect(candidates[0]?.status).toBe("review");
       expect(candidates[0]?.newsImageCachedUrl).toBe("/news-cache/fed.jpg");
     } finally {
       process.env.REPORTS_LLM_API_KEY = originalKey;
       process.env.REPORTS_PLATFORM_ALLOWLIST = originalAllowlist;
+      process.env.REPORTS_BASE_URL = originalBaseUrl;
+    }
+  });
+
+  it("returns empty when reports base url is missing", async () => {
+    const originalKey = process.env.REPORTS_LLM_API_KEY;
+    const originalBaseUrl = process.env.REPORTS_BASE_URL;
+    process.env.REPORTS_LLM_API_KEY = "unit-test-key";
+    delete process.env.REPORTS_BASE_URL;
+
+    try {
+      const candidates = await getReportsGeneratedCandidates();
+      expect(candidates).toEqual([]);
+    } finally {
+      process.env.REPORTS_LLM_API_KEY = originalKey;
+      process.env.REPORTS_BASE_URL = originalBaseUrl;
     }
   });
 

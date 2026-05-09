@@ -8,7 +8,9 @@ import { canAccessAdmin } from "@/lib/auth/guards";
 import { getOptionalSession } from "@/lib/auth/session";
 import { parseAdminMarketInput } from "@/lib/admin/market-form";
 import { buildStandaloneEventValues } from "@/lib/events/standalone-event";
+import { isInvalidJsonBodyError, readJsonBody } from "@/lib/http-json";
 import { applyRateLimit } from "@/lib/rate-limit";
+import { enforceTrustedWriteOrigin } from "@/lib/request-integrity";
 
 export async function POST(request: Request) {
   const session = await getOptionalSession();
@@ -19,6 +21,11 @@ export async function POST(request: Request) {
 
   if (!canAccessAdmin(session)) {
     return NextResponse.json({ error: "Admin access required." }, { status: 403 });
+  }
+
+  const untrustedOrigin = enforceTrustedWriteOrigin(request);
+  if (untrustedOrigin) {
+    return untrustedOrigin;
   }
 
   const rateLimited = await applyRateLimit({
@@ -34,7 +41,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const payload = parseAdminMarketInput(await request.json());
+    const payload = parseAdminMarketInput(await readJsonBody(request));
     const marketId = randomUUID();
     const eventId = randomUUID();
 
@@ -96,6 +103,10 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ market }, { status: 201 });
   } catch (error) {
+    if (isInvalidJsonBodyError(error)) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
+
     if (error instanceof Error && /unique|duplicate/i.test(error.message)) {
       return NextResponse.json({ error: "Slug already exists." }, { status: 409 });
     }

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { formatPublicLeaderboardName } from "./queries";
 import {
   buildEventDetailView,
   buildEventListItem,
@@ -176,67 +177,81 @@ describe("market view builders", () => {
   });
 });
 
+describe("formatPublicLeaderboardName", () => {
+  it("redacts phone-like leaderboard names", () => {
+    expect(formatPublicLeaderboardName("测试账户 17600806220", 2)).toBe("匿名用户 3");
+  });
+
+  it("keeps normal public aliases", () => {
+    expect(formatPublicLeaderboardName("北岸观察", 0)).toBe("北岸观察");
+  });
+});
+
 describe("event view builders", () => {
   it("selects a live high-volume child market as the primary child for an event", () => {
-    const event = buildEventListItem({
-      id: "evt_ceasefire",
-      slug: "us-x-iran-ceasefire-by",
-      title: "美国与伊朗会在何时之前达成停火？",
-      brief: "同一事件下按不同时间边界拆分的多子市场。",
-      category: "current_affairs",
-      sourceName: "Polymarket",
-      sourceUrl: "https://polymarket.com/event/us-x-iran-ceasefire-by",
-      childMarkets: [
-        {
-          id: "mkt_1",
-          slug: "us-x-iran-ceasefire-by-apr-7",
-          question: "美国与伊朗会在 4 月 7 日前达成停火吗？",
-          answerLabel: "4月7日",
-          answerOrder: 1,
-          category: "current_affairs",
-          status: "live",
-          closesAt: new Date("2026-04-07T12:00:00.000Z"),
-          resolvesAt: new Date("2026-04-07T12:30:00.000Z"),
-          liquidity: 115,
-          yesShares: 42,
-          noShares: 73,
-          volumePoints: 64,
-          activeTraders: 16,
-        },
-        {
-          id: "mkt_2",
-          slug: "us-x-iran-ceasefire-by-apr-15",
-          question: "美国与伊朗会在 4 月 15 日前达成停火吗？",
-          answerLabel: "4月15日",
-          answerOrder: 2,
-          category: "current_affairs",
-          status: "live",
-          closesAt: new Date("2026-04-15T12:00:00.000Z"),
-          resolvesAt: new Date("2026-04-15T12:30:00.000Z"),
-          liquidity: 130,
-          yesShares: 89,
-          noShares: 41,
-          volumePoints: 132,
-          activeTraders: 28,
-        },
-        {
-          id: "mkt_3",
-          slug: "us-x-iran-ceasefire-by-may-1",
-          question: "美国与伊朗会在 5 月 1 日前达成停火吗？",
-          answerLabel: "5月1日",
-          answerOrder: 3,
-          category: "current_affairs",
-          status: "locked",
-          closesAt: new Date("2026-05-01T12:00:00.000Z"),
-          resolvesAt: new Date("2026-05-01T12:30:00.000Z"),
-          liquidity: 120,
-          yesShares: 91,
-          noShares: 29,
-          volumePoints: 180,
-          activeTraders: 22,
-        },
-      ],
-    });
+    const now = new Date("2026-04-01T12:00:00.000Z");
+    const event = buildEventListItem(
+      {
+        id: "evt_ceasefire",
+        slug: "us-x-iran-ceasefire-by",
+        title: "美国与伊朗会在何时之前达成停火？",
+        brief: "同一事件下按不同时间边界拆分的多子市场。",
+        category: "current_affairs",
+        sourceName: "Polymarket",
+        sourceUrl: "https://polymarket.com/event/us-x-iran-ceasefire-by",
+        childMarkets: [
+          {
+            id: "mkt_1",
+            slug: "us-x-iran-ceasefire-by-apr-7",
+            question: "美国与伊朗会在 4 月 7 日前达成停火吗？",
+            answerLabel: "4月7日",
+            answerOrder: 1,
+            category: "current_affairs",
+            status: "live",
+            closesAt: new Date("2026-04-07T12:00:00.000Z"),
+            resolvesAt: new Date("2026-04-07T12:30:00.000Z"),
+            liquidity: 115,
+            yesShares: 42,
+            noShares: 73,
+            volumePoints: 64,
+            activeTraders: 16,
+          },
+          {
+            id: "mkt_2",
+            slug: "us-x-iran-ceasefire-by-apr-15",
+            question: "美国与伊朗会在 4 月 15 日前达成停火吗？",
+            answerLabel: "4月15日",
+            answerOrder: 2,
+            category: "current_affairs",
+            status: "live",
+            closesAt: new Date("2026-04-15T12:00:00.000Z"),
+            resolvesAt: new Date("2026-04-15T12:30:00.000Z"),
+            liquidity: 130,
+            yesShares: 89,
+            noShares: 41,
+            volumePoints: 132,
+            activeTraders: 28,
+          },
+          {
+            id: "mkt_3",
+            slug: "us-x-iran-ceasefire-by-may-1",
+            question: "美国与伊朗会在 5 月 1 日前达成停火吗？",
+            answerLabel: "5月1日",
+            answerOrder: 3,
+            category: "current_affairs",
+            status: "locked",
+            closesAt: new Date("2026-05-01T12:00:00.000Z"),
+            resolvesAt: new Date("2026-05-01T12:30:00.000Z"),
+            liquidity: 120,
+            yesShares: 91,
+            noShares: 29,
+            volumePoints: 180,
+            activeTraders: 22,
+          },
+        ],
+      },
+      now,
+    );
 
     expect(event.primaryChildMarket.slug).toBe("us-x-iran-ceasefire-by-apr-15");
     expect(event.totalVolumePoints).toBe(376);
@@ -314,7 +329,7 @@ describe("event view builders", () => {
     expect(event.closesAt.toISOString()).toBe("2026-04-15T12:00:00.000Z");
   });
 
-  it("retains stale external events for secondary homepage sections while flagging them stale", () => {
+  it("keeps stale external events visible while flagging them stale", () => {
     const now = new Date("2026-04-08T12:00:00.000Z");
     const event = buildEventListItem(
       {
@@ -355,6 +370,142 @@ describe("event view builders", () => {
     expect(event.contentOrigin).toBe("external_live");
     expect(event.freshnessStatus).toBe("stale");
     expect(event.homepageEligible).toBe(true);
+  });
+
+  it("keeps recently synced external events on the homepage after the fresh-price window", () => {
+    const now = new Date("2026-04-08T12:00:00.000Z");
+    const event = buildEventListItem(
+      {
+        id: "evt_displayable_external",
+        slug: "displayable-polymarket-event",
+        title: "外部盘口超过半小时但仍可展示的测试事件",
+        brief: "价格不是实时新鲜，但目录和盘口仍在展示窗口内。",
+        category: "current_affairs",
+        sourceName: "Polymarket",
+        sourceUrl: "https://polymarket.com/event/displayable-polymarket-event",
+        childMarkets: [
+          {
+            id: "mkt_displayable_external",
+            slug: "displayable-polymarket-event-primary",
+            question: "外部盘口超过半小时但仍可展示的测试事件",
+            answerLabel: "主市场",
+            answerOrder: 1,
+            category: "current_affairs",
+            status: "live",
+            closesAt: new Date("2026-04-20T12:00:00.000Z"),
+            resolvesAt: new Date("2026-04-20T18:00:00.000Z"),
+            liquidity: 130,
+            yesShares: 40,
+            noShares: 60,
+            volumePoints: 720,
+            activeTraders: 50,
+            externalYesProbabilityBps: 4100,
+            externalNoProbabilityBps: 5900,
+            priceAnchorMode: "external",
+            externalPriceUpdatedAt: new Date("2026-04-08T08:10:00.000Z"),
+            externalPriceStale: false,
+          },
+        ],
+      },
+      now,
+    );
+
+    expect(event.contentOrigin).toBe("external_live");
+    expect(event.freshnessStatus).toBe("stale");
+    expect(event.homepageEligible).toBe(true);
+  });
+
+  it("allows published Chinese news events onto the homepage", () => {
+    const now = new Date("2026-04-08T12:00:00.000Z");
+    const event = buildEventListItem(
+      {
+        id: "evt_cn_news",
+        slug: "news-cn-public-event",
+        title: "国内公开新闻生成事件会进入首页吗？",
+        brief: "审核发布后的国内新闻事件。",
+        category: "current_affairs",
+        sourceName: "微博",
+        sourceUrl: "https://s.weibo.com/weibo?q=test",
+        externalSource: "cn_news",
+        childMarkets: [
+          {
+            id: "mkt_cn_news",
+            slug: "news-cn-public-event",
+            question: "国内公开新闻生成事件会进入首页吗？",
+            answerLabel: "主市场",
+            answerOrder: 1,
+            category: "current_affairs",
+            status: "live",
+            closesAt: new Date("2026-04-20T12:00:00.000Z"),
+            resolvesAt: new Date("2026-04-20T18:00:00.000Z"),
+            liquidity: 130,
+            yesShares: 40,
+            noShares: 60,
+            volumePoints: 720,
+            activeTraders: 50,
+            externalSource: "cn_news",
+            externalPriceUpdatedAt: new Date("2026-04-08T11:55:00.000Z"),
+            externalPriceStale: false,
+            priceAnchorMode: "local",
+          },
+        ],
+      },
+      now,
+    );
+
+    expect(event.contentOrigin).toBe("external_live");
+    expect(event.homepageEligible).toBe(true);
+  });
+
+  it("marks reports-generated events as backoffice candidates instead of homepage content", () => {
+    const now = new Date("2026-04-08T12:00:00.000Z");
+    const event = buildEventListItem(
+      {
+        id: "evt_report_candidate",
+        slug: "news-fed-signal-candidate",
+        title: "美联储本周会释放降息信号吗？",
+        brief: "LLM 从热榜新闻生成，等待后台审核。",
+        category: "finance",
+        sourceName: "微博",
+        sourceUrl: "https://example.com/news/fed",
+        externalSource: "news_report",
+        evidence: ["以央行公开声明或主流新闻报道为准"],
+        newsReferences: [
+          {
+            sourceName: "微博",
+            articleUrl: "https://example.com/news/fed",
+            fetchedAt: "2026-04-08T11:30:00.000Z",
+          },
+        ],
+        childMarkets: [
+          {
+            id: "mkt_report_candidate",
+            slug: "news-fed-signal-candidate-primary",
+            question: "美联储本周会释放降息信号吗？",
+            answerLabel: "主市场",
+            answerOrder: 1,
+            category: "finance",
+            status: "review",
+            closesAt: new Date("2026-04-20T12:00:00.000Z"),
+            resolvesAt: new Date("2026-04-21T12:00:00.000Z"),
+            liquidity: 120,
+            yesShares: 58,
+            noShares: 62,
+            volumePoints: 680,
+            activeTraders: 42,
+            externalPriceUpdatedAt: new Date("2026-04-08T11:30:00.000Z"),
+            priceAnchorMode: "local",
+          },
+        ],
+      },
+      now,
+    );
+
+    expect(event.contentOrigin).toBe("backoffice_candidate");
+    expect(event.evidence).toEqual(["以央行公开声明或主流新闻报道为准"]);
+    expect(event.newsReferences[0]?.articleUrl).toBe("https://example.com/news/fed");
+    expect(event.freshnessStatus).toBe("stale");
+    expect(event.homepageEligible).toBe(false);
   });
 
   it("allows curated local events onto the homepage while excluding seed demo events", () => {
@@ -492,6 +643,176 @@ describe("event view builders", () => {
     expect(sections[0]?.key).toBe("featured");
     expect(sections.find((section) => section.key === "world")?.markets).toHaveLength(1);
     expect(sections.find((section) => section.key === "crypto")?.markets).toHaveLength(1);
+  });
+
+  it("uses local curated events only when fresh external homepage events are insufficient", () => {
+    const now = new Date("2026-04-08T12:00:00.000Z");
+    const buildExternal = (id: string, slug: string, category: "current_affairs" | "finance" | "technology") =>
+      buildEventListItem(
+        {
+          id,
+          slug,
+          title: slug,
+          brief: "新鲜外部事件。",
+          category,
+          sourceName: "Polymarket",
+          sourceUrl: `https://polymarket.com/event/${slug}`,
+          childMarkets: [
+            {
+              id: `${id}_market`,
+              slug: `${slug}-primary`,
+              question: slug,
+              answerLabel: "主市场",
+              answerOrder: 1,
+              category,
+              status: "live",
+              closesAt: new Date("2026-05-01T12:00:00.000Z"),
+              resolvesAt: new Date("2026-05-02T12:00:00.000Z"),
+              liquidity: 120,
+              yesShares: 58,
+              noShares: 42,
+              volumePoints: 1200,
+              activeTraders: 180,
+              externalYesProbabilityBps: 5700,
+              externalNoProbabilityBps: 4300,
+              priceAnchorMode: "external",
+              externalPriceUpdatedAt: new Date("2026-04-08T11:55:00.000Z"),
+            },
+          ],
+        },
+        now,
+      );
+    const curated = buildEventListItem(
+      {
+        id: "evt_curated_fill",
+        slug: "culture-singer-2026-launch-lineup",
+        title: "本地策展补位事件",
+        brief: "只有外部不足时才应出现。",
+        category: "current_affairs",
+        childMarkets: [
+          {
+            id: "mkt_curated_fill",
+            slug: "culture-singer-2026-launch-lineup-primary",
+            question: "本地策展补位事件",
+            answerLabel: "主市场",
+            answerOrder: 1,
+            category: "current_affairs",
+            status: "live",
+            closesAt: new Date("2026-05-10T12:00:00.000Z"),
+            resolvesAt: new Date("2026-05-11T12:00:00.000Z"),
+            liquidity: 110,
+            yesShares: 54,
+            noShares: 46,
+            volumePoints: 9000,
+            activeTraders: 900,
+          },
+        ],
+      },
+      now,
+    );
+
+    const sections = buildHomeEventSections(
+      [
+        buildExternal("evt_external_world", "world-fresh-external-a", "current_affairs"),
+        buildExternal("evt_external_crypto", "crypto-fresh-external-b", "finance"),
+        buildExternal("evt_external_tech", "tech-fresh-external-c", "technology"),
+        curated,
+      ],
+      now,
+    );
+    const slugs = sections.flatMap((section) => section.markets.map((event) => event.slug));
+
+    expect(slugs).not.toContain("culture-singer-2026-launch-lineup");
+  });
+
+  it("keeps local curated events out of production homepage sections", () => {
+    const now = new Date("2026-04-08T12:00:00.000Z");
+    const buildCurated = (id: string, slug: string) =>
+      buildEventListItem(
+        {
+          id,
+          slug,
+          title: slug,
+          brief: "本地策展补位事件。",
+          category: "current_affairs",
+          childMarkets: [
+            {
+              id: `${id}_market`,
+              slug: `${slug}-primary`,
+              question: slug,
+              answerLabel: "主市场",
+              answerOrder: 1,
+              category: "current_affairs",
+              status: "live",
+              closesAt: new Date("2026-05-10T12:00:00.000Z"),
+              resolvesAt: new Date("2026-05-11T12:00:00.000Z"),
+              liquidity: 110,
+              yesShares: 54,
+              noShares: 46,
+              volumePoints: 9000,
+              activeTraders: 900,
+            },
+          ],
+        },
+        now,
+      );
+
+    const sections = buildHomeEventSections(
+      [
+        buildCurated("evt_curated_a", "culture-singer-2026-launch-lineup"),
+        buildCurated("evt_curated_b", "tech-openai-device-launch-2026"),
+        buildCurated("evt_curated_c", "finance-gold-above-3200-before-july-2026"),
+        buildCurated("evt_curated_d", "world-ukraine-ceasefire-before-july-2026"),
+      ],
+      now,
+    );
+    const slugs = new Set(sections.flatMap((section) => section.markets.map((event) => event.slug)));
+
+    expect(slugs).toEqual(new Set());
+  });
+
+  it("treats bundled Polymarket fallback snapshots as demo content", () => {
+    const now = new Date("2026-05-02T12:00:00.000Z");
+    const event = buildEventListItem(
+      {
+        id: "evt_fallback_polymarket",
+        slug: "fed-cut-rates-before-june-2026",
+        externalEventId: "fallback-fed-cut-june",
+        externalSource: "polymarket",
+        sourceName: "Polymarket",
+        sourceUrl: "https://polymarket.com/event/fed-cut-rates-before-june-2026",
+        title: "美联储会在 2026 年 6 月前降息吗？",
+        brief: "内置快照，不应作为生产首页事件。",
+        category: "finance",
+        childMarkets: [
+          {
+            id: "mkt_fallback_polymarket",
+            slug: "fed-cut-rates-before-june-2026-primary",
+            question: "美联储会在 2026 年 6 月前降息吗？",
+            answerLabel: "主市场",
+            answerOrder: 1,
+            category: "finance",
+            status: "live",
+            closesAt: new Date("2026-06-18T18:00:00.000Z"),
+            resolvesAt: new Date("2026-06-19T18:00:00.000Z"),
+            liquidity: 120,
+            yesShares: 45,
+            noShares: 55,
+            volumePoints: 9000,
+            activeTraders: 900,
+            externalYesProbabilityBps: 4500,
+            externalNoProbabilityBps: 5500,
+            priceAnchorMode: "external",
+            externalPriceUpdatedAt: new Date("2026-05-02T11:55:00.000Z"),
+          },
+        ],
+      },
+      now,
+    );
+
+    expect(event.contentOrigin).toBe("seed_demo");
+    expect(event.homepageEligible).toBe(false);
+    expect(buildHomeEventSections([event], now)).toEqual([]);
   });
 
   it("builds an event detail view with selected child holdings and event summary", () => {

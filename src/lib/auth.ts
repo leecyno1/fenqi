@@ -16,66 +16,91 @@ import { sendPasswordResetEmailMessage, sendVerificationEmailMessage } from "@/l
 import { getAuthPolicy, getServerEnv } from "@/lib/env";
 
 const authBaseURLConfig = buildAuthBaseURLConfig();
-const env = getServerEnv();
-const authPolicy = getAuthPolicy();
 
-export const auth = betterAuth({
-  database: drizzleAdapter(db, {
-    provider: "pg",
-    schema: {
-      user: users,
-      session: sessions,
-      account: accounts,
-      verification: verifications,
+function createAuth() {
+  const env = getServerEnv();
+  const authPolicy = getAuthPolicy();
+
+  return betterAuth({
+    database: drizzleAdapter(db, {
+      provider: "pg",
+      schema: {
+        user: users,
+        session: sessions,
+        account: accounts,
+        verification: verifications,
+      },
+    }),
+    baseURL: authBaseURLConfig,
+    secret: env.betterAuthSecret,
+    advanced: {
+      useSecureCookies: env.betterAuthUrl.startsWith("https://"),
     },
-  }),
-  baseURL: authBaseURLConfig,
-  secret: env.betterAuthSecret,
-  emailAndPassword: {
-    enabled: true,
-    requireEmailVerification: authPolicy.requireEmailVerification,
-    revokeSessionsOnPasswordReset: true,
-    sendResetPassword: authPolicy.canSendTransactionalEmail
-      ? async ({ user, url }) => {
-          await sendPasswordResetEmailMessage({
-            email: user.email,
-            url,
-          });
+    emailAndPassword: {
+      enabled: true,
+      requireEmailVerification: authPolicy.requireEmailVerification,
+      revokeSessionsOnPasswordReset: true,
+      sendResetPassword: authPolicy.canSendTransactionalEmail
+        ? async ({ user, url }) => {
+            await sendPasswordResetEmailMessage({
+              email: user.email,
+              url,
+            });
+          }
+        : undefined,
+    },
+    emailVerification: authPolicy.canSendTransactionalEmail
+      ? {
+          sendOnSignUp: authPolicy.requireEmailVerification,
+          sendOnSignIn: true,
+          autoSignInAfterVerification: true,
+          sendVerificationEmail: async ({ user, url }) => {
+            await sendVerificationEmailMessage({
+              email: user.email,
+              url,
+            });
+          },
         }
       : undefined,
-  },
-  emailVerification: authPolicy.canSendTransactionalEmail
-    ? {
-        sendOnSignUp: authPolicy.requireEmailVerification,
-        sendOnSignIn: true,
-        autoSignInAfterVerification: true,
-        sendVerificationEmail: async ({ user, url }) => {
-          await sendVerificationEmailMessage({
-            email: user.email,
-            url,
-          });
-        },
-      }
-    : undefined,
-  databaseHooks: {
-    user: {
-      create: {
-        after: async (user) => {
-          const artifacts = buildInitialWalletArtifacts({
-            userId: user.id,
-          });
+    databaseHooks: {
+      user: {
+        create: {
+          after: async (user) => {
+            const artifacts = buildInitialWalletArtifacts({
+              userId: user.id,
+            });
 
-          await db
-            .insert(virtualWallets)
-            .values(artifacts.wallet)
-            .onConflictDoNothing();
+            await db
+              .insert(virtualWallets)
+              .values(artifacts.wallet)
+              .onConflictDoNothing();
 
-          await db
-            .insert(walletLedger)
-            .values(artifacts.ledger)
-            .onConflictDoNothing();
+            await db
+              .insert(walletLedger)
+              .values(artifacts.ledger)
+              .onConflictDoNothing();
+          },
         },
       },
     },
+  });
+}
+
+type Auth = ReturnType<typeof createAuth>;
+
+let authInstance: Auth | null = null;
+
+export function getAuth() {
+  authInstance ??= createAuth();
+
+  return authInstance;
+}
+
+export const auth = new Proxy({} as Auth, {
+  get(_target, property, receiver) {
+    const currentAuth = getAuth();
+    const value = Reflect.get(currentAuth, property, receiver);
+
+    return typeof value === "function" ? value.bind(currentAuth) : value;
   },
 });

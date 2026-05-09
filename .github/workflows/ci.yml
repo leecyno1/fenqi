@@ -10,6 +10,13 @@ on:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    env:
+      NODE_ENV: production
+      DATABASE_URL: postgres://ci:ci@127.0.0.1:5432/poly_ci
+      BETTER_AUTH_SECRET: ci-secret-123456789012345678901234
+      BETTER_AUTH_URL: http://127.0.0.1:3000
+      NEXT_PUBLIC_APP_URL: http://127.0.0.1:3000
+      CRON_SECRET: ci-cron-secret-123456
     steps:
       - name: Checkout
         uses: actions/checkout@v4

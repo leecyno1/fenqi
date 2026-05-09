@@ -8,6 +8,7 @@ async function main() {
     limit: 200,
     active: true,
     cacheImage: cacheRemoteImage,
+    skipNewsEnrichment: process.env.SKIP_NEWS_ENRICHMENT === "true",
   });
   const prices = await syncPolymarketPrices({ limit: 60 });
 

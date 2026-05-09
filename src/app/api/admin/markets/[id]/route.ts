@@ -7,7 +7,9 @@ import { parseAdminMarketInput } from "@/lib/admin/market-form";
 import { canAccessAdmin } from "@/lib/auth/guards";
 import { getOptionalSession } from "@/lib/auth/session";
 import { getAdminMarketDeleteGuard } from "@/lib/data/queries";
+import { isInvalidJsonBodyError, readJsonBody } from "@/lib/http-json";
 import { applyRateLimit } from "@/lib/rate-limit";
+import { enforceTrustedWriteOrigin } from "@/lib/request-integrity";
 
 export async function PATCH(
   request: Request,
@@ -21,6 +23,11 @@ export async function PATCH(
 
   if (!canAccessAdmin(session)) {
     return NextResponse.json({ error: "Admin access required." }, { status: 403 });
+  }
+
+  const untrustedOrigin = enforceTrustedWriteOrigin(request);
+  if (untrustedOrigin) {
+    return untrustedOrigin;
   }
 
   const rateLimited = await applyRateLimit({
@@ -38,7 +45,7 @@ export async function PATCH(
   const { id } = await params;
 
   try {
-    const payload = parseAdminMarketInput(await request.json());
+    const payload = parseAdminMarketInput(await readJsonBody(request));
     const [currentMarket] = await db
       .select({
         id: markets.id,
@@ -110,6 +117,10 @@ export async function PATCH(
 
     return NextResponse.json({ market });
   } catch (error) {
+    if (isInvalidJsonBodyError(error)) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
+
     if (error instanceof Error && /unique|duplicate/i.test(error.message)) {
       return NextResponse.json({ error: "Slug already exists." }, { status: 409 });
     }
@@ -131,6 +142,11 @@ export async function DELETE(
 
   if (!canAccessAdmin(session)) {
     return NextResponse.json({ error: "Admin access required." }, { status: 403 });
+  }
+
+  const untrustedOrigin = enforceTrustedWriteOrigin(request);
+  if (untrustedOrigin) {
+    return untrustedOrigin;
   }
 
   const rateLimited = await applyRateLimit({

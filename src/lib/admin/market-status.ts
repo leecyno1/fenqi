@@ -8,6 +8,6 @@ const marketStatusSchema = z.object({
   status: z.enum(marketStatusValues),
 });
 
-export function parseAdminMarketStatusInput(input: { status: string }) {
+export function parseAdminMarketStatusInput(input: unknown) {
   return marketStatusSchema.parse(input);
 }

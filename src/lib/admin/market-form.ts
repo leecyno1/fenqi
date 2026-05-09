@@ -84,7 +84,7 @@ function parseResolutionSources(input: string) {
     });
 }
 
-export function parseAdminMarketInput(input: AdminMarketFormInput) {
+export function parseAdminMarketInput(input: unknown) {
   const parsed = baseSchema.parse(input);
   const closesAt = new Date(parsed.closesAt);
   const resolvesAt = new Date(parsed.resolvesAt);

@@ -6,13 +6,36 @@ import { NextResponse } from "next/server";
 import { db } from "@/db/client";
 import { rateLimitBuckets } from "@/db/schema";
 
-export function getClientAddress(request: Request) {
-  const forwarded = request.headers.get("x-forwarded-for");
-  if (forwarded) {
-    return forwarded.split(",")[0]?.trim() ?? "unknown";
+function normalizeIpToken(value: string | null) {
+  if (!value) {
+    return null;
   }
 
-  return request.headers.get("x-real-ip")?.trim() ?? "unknown";
+  const candidate = value.split(",")[0]?.trim() ?? "";
+  if (!candidate) {
+    return null;
+  }
+
+  return candidate.toLowerCase();
+}
+
+export function getClientAddress(request: Request) {
+  const directHeaders = [
+    "x-real-ip",
+    "cf-connecting-ip",
+    "fly-client-ip",
+    "x-vercel-forwarded-for",
+  ];
+
+  for (const header of directHeaders) {
+    const value = normalizeIpToken(request.headers.get(header));
+    if (value) {
+      return value;
+    }
+  }
+
+  const forwarded = normalizeIpToken(request.headers.get("x-forwarded-for"));
+  return forwarded ?? "unknown";
 }
 
 export function buildRateLimitIdentifier(parts: Array<string | null | undefined>) {

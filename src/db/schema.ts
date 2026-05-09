@@ -161,6 +161,29 @@ export const marketEvents = pgTable(
   ],
 );
 
+export const externalTextTranslations = pgTable(
+  "external_text_translation",
+  {
+    id: text("id").primaryKey(),
+    source: text("source").notNull(),
+    sourceId: text("source_id").notNull(),
+    sourceSlug: text("source_slug"),
+    originalTitle: text("original_title").notNull(),
+    originalBrief: text("original_brief"),
+    translatedTitle: text("translated_title").notNull(),
+    translatedBrief: text("translated_brief").notNull(),
+    model: text("model").notNull().default("rule-fallback"),
+    status: text("status").notNull().default("success"),
+    error: text("error"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("external_text_translation_source_id_unique").on(table.source, table.sourceId),
+    index("external_text_translation_status_idx").on(table.status),
+  ],
+);
+
 export const markets = pgTable(
   "market",
   {

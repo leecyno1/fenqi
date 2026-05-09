@@ -1,10 +1,10 @@
 import { createHash } from "node:crypto";
 import { mkdir, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 
-const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
-const CACHE_DIR = path.resolve(/* turbopackIgnore: true */ MODULE_DIR, "../../../public/news-cache");
+// Keep the cache path statically scoped under the project root so Turbopack
+// traces the `public/news-cache` directory instead of the whole workspace.
+const CACHE_DIR = path.join(/* turbopackIgnore: true */ process.cwd(), "public", "news-cache");
 
 function inferExtension(contentType: string | null, imageUrl: string) {
   if (contentType?.includes("png")) return "png";

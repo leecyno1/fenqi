@@ -1,5 +1,9 @@
-export const HOMEPAGE_EXTERNAL_PRICE_MAX_AGE_MINUTES = 30;
-export const HOMEPAGE_EXTERNAL_CATALOG_MAX_AGE_MINUTES = 8 * 60;
+export const HOMEPAGE_EXTERNAL_PRICE_FRESH_MAX_AGE_MINUTES = 30;
+export const HOMEPAGE_EXTERNAL_PRICE_DISPLAY_MAX_AGE_MINUTES = 24 * 60;
+export const HOMEPAGE_EXTERNAL_CATALOG_MAX_AGE_MINUTES = 24 * 60;
+
+export const LIVE_EXTERNAL_EVENT_SOURCES = new Set(["polymarket", "cn_news", "cn_entertainment"]);
+export const BACKOFFICE_CANDIDATE_EVENT_SOURCES = new Set(["news_report"]);
 
 export const LOCAL_CURATED_EVENT_SLUGS = new Set([
   "world-ukraine-ceasefire-before-july-2026",
@@ -32,4 +36,3 @@ export const LOCAL_CURATED_EVENT_SLUGS = new Set([
   "culture-streaming-gala-2026-costume-drama",
   "culture-golden-eagle-2026-realist-drama",
 ]);
-
